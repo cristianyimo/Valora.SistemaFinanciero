@@ -7,7 +7,6 @@ import Login from './componentes/auth/Login'
 
 // Componentes del Dashboard
 import BarraSuperior from './componentes/barraSuperior/barraSuperior'
-import ModalInversionista from './componentes/botonesDeAccion/ModalesBotones/ModalInversionista'
 import ModalCliente from './componentes/botonesDeAccion/ModalesBotones/ModalClientes'
 import ModalAgregarOpcionPrestamo from './componentes/botonesDeAccion/ModalesBotones/ModalAgregarOpcionPrestamo'
 import ModalAgregarPrestamo from './componentes/botonesDeAccion/ModalesBotones/ModalAgregarPrestamo'
@@ -19,6 +18,7 @@ import PanoramaEstadisticas from './componentes/PanoramaEstadisticas/PanoramaEst
 import ModalAdmin from './componentes/botonesDeAccion/ModalesBotones/ModalAdmin'
 import RegistrosRecientes from './componentes/Registros/RegistrosRecientes'
 import GraficoEstadistico from './componentes/PanoramaEstadisticas/GraficoEstadistico'
+import ModalCobranzas from './componentes/Cobranzas/ModalCobranzas'
 
 export default function App() {
   const [usuario, setUsuario] = useState(null)
@@ -27,7 +27,7 @@ export default function App() {
 
   const [prestamoFicha, setPrestamoFicha] = useState(null)
   const [modalActivo, setModalActivo] = useState(null)
-  const [tipoDirectorio, setTipoDirectorio] = useState('clientes')
+  const [versionCobros, setVersionCobros] = useState(0)
   const [perfilSeleccionadoId, setPerfilSeleccionadoId] = useState(null)
   const [modalFichaAbierta, setModalFichaAbierta] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -141,13 +141,6 @@ export default function App() {
   }
 
   const handleOpenDirectorioClientes = () => {
-    setTipoDirectorio('clientes')
-    setPerfilSeleccionadoId(null)
-    setModalActivo('directorio')
-  }
-
-  const handleOpenDirectorioInversionistas = () => {
-    setTipoDirectorio('inversionistas')
     setPerfilSeleccionadoId(null)
     setModalActivo('directorio')
   }
@@ -198,17 +191,10 @@ export default function App() {
         rolUsuario={usuario?.rol}
         onOpenModal={(tipo) => setModalActivo(tipo)}
         onOpenClientes={handleOpenDirectorioClientes}
-        onOpenInversionistas={handleOpenDirectorioInversionistas}
+        onOpenCobranzas={() => setModalActivo('cobranzas')}
       />
 
       {/* Modales */}
-      <ModalInversionista
-        rolUsuario={usuario?.rol}
-        isOpen={modalActivo === 'inversionista'}
-        onClose={() => setModalActivo(null)}
-        onSuccess={handleRefreshData}
-      />
-
       <ModalAdmin
         rolUsuario={usuario?.rol}
         isOpen={modalActivo === 'admin'}
@@ -248,10 +234,16 @@ export default function App() {
         usuarioLogueado={usuario}
       />
 
+      <ModalCobranzas
+        isOpen={modalActivo === 'cobranzas'}
+        version={versionCobros}
+        onClose={() => setModalActivo(null)}
+        onVerFichaPrestamo={handleAbrirFichaPrestamo}
+      />
+
       <ModalDirectorio
         rolUsuario={usuario?.rol}
         isOpen={modalActivo === 'directorio'}
-        tipoInicial={tipoDirectorio}
         itemInicialId={perfilSeleccionadoId}
         usuarioLogueado={usuario}
         onClose={() => {
@@ -270,15 +262,13 @@ export default function App() {
         }}
         prestamo={prestamoFicha}
         usuarioLogueado={usuario}
+        onCobroRegistrado={() => setVersionCobros((v) => v + 1)}
       />
 
       {/* Métricas y Estadísticas */}
       {esAdmin && (
         <>
-          <PanoramaEstadisticas
-            onAbrirDirectorioInversionistas={handleOpenDirectorioInversionistas}
-            rolUsuario={usuario?.rol}
-          />
+          <PanoramaEstadisticas rolUsuario={usuario?.rol} />
           <GraficoEstadistico />
         </>
       )}
@@ -289,13 +279,7 @@ export default function App() {
           rolUsuario={usuario?.rol}
           onVerFichaPrestamo={handleAbrirFichaPrestamo}
           onAbrirCliente={(cliente) => {
-            setTipoDirectorio('clientes')
             setPerfilSeleccionadoId(cliente?.id || null)
-            setModalActivo('directorio')
-          }}
-          onAbrirInversionista={(inversionista) => {
-            setTipoDirectorio('inversionistas')
-            setPerfilSeleccionadoId(inversionista?.id || null)
             setModalActivo('directorio')
           }}
         />

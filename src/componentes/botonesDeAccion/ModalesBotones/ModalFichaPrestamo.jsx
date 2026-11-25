@@ -1,21 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import {
-  X, User, Briefcase, CheckCircle2, Clock, Calendar,
+  X, User, CheckCircle2, Clock, Calendar,
   DollarSign, Receipt, AlertCircle
 } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
 import {
-  hoyLocalISO, fechaFormularioATimestamp, calcularFechaVencimiento,
-  calcularCronograma, redondear2, TOLERANCIA_SALDO
+  hoyLocalISO, fechaFormularioATimestamp, cronogramaConVencimientos,
+  redondear2, TOLERANCIA_SALDO, punitorioTotal, leerConfigPunitorio, guardarConfigPunitorio
 } from '../../../lib/finanzas'
+import BotonWhatsApp from '../../comunes/BotonWhatsApp'
+import CalculadoraPunitorio from '../../comunes/CalculadoraPunitorio'
 
 const formatearMonto = (n) => Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })
 
 export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioLogueado = null, onCobroRegistrado }) {
   const [pagos, setPagos] = useState([])
   const [cliente, setCliente] = useState(null)
-  const [inversionista, setInversionista] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [configPunitorio, setConfigPunitorio] = useState(() => ({ aplicar: false, ...leerConfigPunitorio() }))
 
   // Estados del sub-formulario de cobro directo
   const [mostrarFormCobro, setMostrarFormCobro] = useState(false)
@@ -52,18 +54,6 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
           .maybeSingle()
         setCliente(cliData)
       }
-
-      // 3. Cargar Datos del Inversionista
-      if (prestamo.inversionista_id) {
-        const { data: invData } = await supabase
-          .from('usuarios')
-          .select('*')
-          .eq('id', prestamo.inversionista_id)
-          .maybeSingle()
-        setInversionista(invData)
-      } else {
-        setInversionista(null)
-      }
     } catch (err) {
       console.error('Error al cargar ficha del préstamo:', err)
     } finally {
@@ -92,15 +82,12 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
   const valorCuotaCalculado = Number(prestamo.monto_cuota || (totalPagar / cantidadCuotas) || 0)
 
   // --- DESGLOSE CON DISTRIBUCIÓN DE PAGOS TOTALES Y PARCIALES (en centavos) ---
-  const fechaBase = prestamo.fecha_inicio || prestamo.created_at
-  const { cuotas: cronograma } = calcularCronograma(
+  const { cuotas: cronograma } = cronogramaConVencimientos(
     { ...prestamo, monto_total_pagar: totalPagar, cantidad_cuotas: cantidadCuotas, monto_cuota: valorCuotaCalculado },
     totalCobrado
   )
   const tablaCuotas = cronograma.map((c) => ({
-    numeroCuota: c.numeroCuota,
-    monto: c.monto,
-    fechaVencimiento: calcularFechaVencimiento(fechaBase, c.numeroCuota, prestamo.frecuencia),
+    ...c,
     estadoCuota: c.estado,
     cubiertoEnEstaCuota: c.cubierto,
     restanteDeEstaCuota: c.restante
@@ -108,10 +95,32 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
 
   const prestamoCancelado = totalPagar > 0 && saldoRestante <= TOLERANCIA_SALDO
   const estadoMostrado = prestamoCancelado ? 'finalizado' : prestamo.estado
+  const cuotasVencidas = prestamoCancelado ? [] : tablaCuotas.filter((c) => c.vencida)
+
+  // Cuotas vencidas sobre las que se calcula el punitorio del cobro en curso
+  const vencidasDelCobro = cuotaDestinoCobro
+    ? cuotasVencidas.filter((c) => c.numeroCuota === cuotaDestinoCobro.numeroCuota)
+    : cuotasVencidas
+  const punitorioCobro = configPunitorio.aplicar
+    ? punitorioTotal(vencidasDelCobro, configPunitorio.tasa, configPunitorio.cadaDias)
+    : 0
+
+  const nombreCliente = cliente?.nombre_completo || prestamo.clientes?.nombre_completo || 'Cliente'
+  const datosWhatsApp = (cuota) => ({
+    nombre: nombreCliente,
+    telefono: cliente?.telefono,
+    numeroCuota: cuota.numeroCuota,
+    cantidadCuotas,
+    monto: cuota.restante,
+    vencimiento: cuota.fechaVencimiento,
+    diasAtraso: cuota.diasAtraso,
+    punitorio: configPunitorio.aplicar ? punitorioTotal([cuota], configPunitorio.tasa, configPunitorio.cadaDias) : 0
+  })
 
   // Abrir formulario de cobro para una cuota específica o general
   const handleAbrirCobro = (cuota = null) => {
     setCuotaDestinoCobro(cuota)
+    setConfigPunitorio((c) => ({ ...c, aplicar: false }))
     const montoSugerido = cuota
       ? Math.min(cuota.restanteDeEstaCuota, saldoRestante)
       : Math.min(valorCuotaCalculado, saldoRestante)
@@ -163,6 +172,17 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
         creado_por: autorId
       }
 
+      // El punitorio se guarda aparte: no descuenta saldo de las cuotas
+      if (punitorioCobro > 0) {
+        payloadPago.punitorio = punitorioCobro
+        payloadPago.punitorio_detalle = {
+          tasa: Number(configPunitorio.tasa),
+          cada_dias: Number(configPunitorio.cadaDias),
+          cuotas: vencidasDelCobro.map((c) => ({ numero: c.numeroCuota, dias_atraso: c.diasAtraso, saldo: c.restante }))
+        }
+        guardarConfigPunitorio({ tasa: Number(configPunitorio.tasa), cadaDias: Number(configPunitorio.cadaDias) })
+      }
+
       const { data: pagoCreado, error: errInsert } = await supabase
         .from('pagos')
         .insert([payloadPago])
@@ -191,15 +211,14 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
       }
 
       // Registro en auditoría
-      const nombreCliente = cliente?.nombre_completo || prestamo.clientes?.nombre_completo || 'Cliente'
       const { error: errAudit } = await supabase
         .from('auditoria_actividades')
         .insert([{
           tipo: 'COBRO',
           accion: 'COBRO',
-          titulo: `Ingreso $${montoNum.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`,
+          titulo: `Ingreso $${(montoNum + punitorioCobro).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`,
           subtitulo: `Cobro a ${nombreCliente}`,
-          detalles: `Método: ${cobroData.metodo_pago}${cobroData.observaciones?.trim() ? ` · ${cobroData.observaciones.trim()}` : ''}`,
+          detalles: `Método: ${cobroData.metodo_pago}${punitorioCobro > 0 ? ` · Cuota: $${montoNum.toLocaleString('es-AR', { minimumFractionDigits: 2 })} + Punitorio: $${punitorioCobro.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : ''}${cobroData.observaciones?.trim() ? ` · ${cobroData.observaciones.trim()}` : ''}`,
           persona: nombreCliente,
           autor_id: autorId,
           autor_nombre: usuarioLogueado?.nombre || 'Administración',
@@ -270,35 +289,27 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
         {/* CONTENIDO SCROLLABLE */}
         <div className="flex-1 overflow-y-auto space-y-5 pt-4 pr-1">
 
-          {/* PERFILES: CLIENTE E INVERSIONISTA */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="p-4 rounded-2xl bg-white border border-line flex items-center gap-3">
+          {/* CLIENTE */}
+          <div className="p-4 rounded-2xl bg-white border border-line flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
               <div className="p-3 rounded-xl bg-[#0d6b63]/10 text-[#0d6b63]">
                 <User className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block">CLIENTE ASIGNADO</span>
-                <h4 className="font-bold text-slate-900 text-sm">
-                  {cliente?.nombre_completo || prestamo.clientes?.nombre_completo || 'Cliente'}
-                </h4>
+                <span className="text-[10px] font-bold uppercase text-slate-400 block">CLIENTE</span>
+                <h4 className="font-bold text-slate-900 text-sm">{nombreCliente}</h4>
                 <span className="text-xs text-slate-500 font-medium">
                   Tel: {cliente?.telefono || 'Sin teléfono'}
+                  {cliente?.dni ? ` · ${cliente.tipo_documento || 'DNI'} ${cliente.dni}` : ''}
                 </span>
               </div>
             </div>
-
-            <div className="p-4 rounded-2xl bg-white border border-line flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-[#0d6b63]/10 text-[#0d6b63]">
-                <Briefcase className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block">FONDEADOR / INVERSIONISTA</span>
-                <h4 className="font-bold text-slate-900 text-sm">
-                  {inversionista ? (inversionista.nombre_completo || inversionista.nombre) : 'Propio (Administrador)'}
-                </h4>
-                <span className="text-xs text-slate-500 font-medium">Origen de Capital</span>
-              </div>
-            </div>
+            {cuotasVencidas.length > 0 && (
+              <span className="flex items-center gap-1.5 text-xs font-bold uppercase px-3 py-1.5 rounded-xl bg-red-600 text-white">
+                <AlertCircle className="w-4 h-4" />
+                {cuotasVencidas.length === 1 ? '1 cuota vencida' : `${cuotasVencidas.length} cuotas vencidas`}
+              </span>
+            )}
           </div>
 
           {/* RESUMEN FINANCIERO */}
@@ -376,7 +387,7 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
                     <input
                       type="number"
                       step="any"
-                      min="1"
+                      min="0.01"
                       max={saldoRestante}
                       required
                       value={cobroData.monto_cobrado}
@@ -428,6 +439,19 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
                     className="w-full px-3.5 py-2 rounded-xl border border-line text-xs text-slate-800 focus:outline-none focus:border-[#0d6b63]"
                   />
                 </div>
+
+                <CalculadoraPunitorio
+                  cuotasVencidas={vencidasDelCobro}
+                  config={configPunitorio}
+                  setConfig={setConfigPunitorio}
+                />
+
+                {punitorioCobro > 0 && (
+                  <div className="flex justify-between items-center p-3 rounded-xl bg-slate-900 text-white text-sm font-bold">
+                    <span>Total a cobrar (cuota + punitorio)</span>
+                    <span>${formatearMonto(redondear2((parseFloat(cobroData.monto_cobrado) || 0) + punitorioCobro))}</span>
+                  </div>
+                )}
 
                 {errorCobro && (
                   <p className="text-xs text-red-600 font-semibold bg-red-50 p-2 rounded-lg border border-red-200">
@@ -482,8 +506,10 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
                     <div 
                       key={cuota.numeroCuota}
                       className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                        esTotal 
-                          ? 'bg-emerald-50/50 border-emerald-200' 
+                        esTotal
+                          ? 'bg-emerald-50/50 border-emerald-200'
+                          : cuota.vencida
+                          ? 'bg-red-50 border-red-300'
                           : esParcial
                           ? 'bg-blue-50/50 border-blue-200'
                           : 'bg-white border-line'
@@ -522,16 +548,23 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
                               </span>
                             )}
 
-                            {esPendiente && (
+                            {esPendiente && !cuota.vencida && (
                               <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
                                 <AlertCircle className="w-3 h-3" />
                                 PENDIENTE
                               </span>
                             )}
+
+                            {cuota.vencida && (
+                              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-600 text-white flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3" />
+                                VENCIDA · {cuota.diasAtraso} {cuota.diasAtraso === 1 ? 'DÍA' : 'DÍAS'}
+                              </span>
+                            )}
                           </div>
 
                           <div className="text-xs text-slate-500 font-medium mt-0.5 space-x-2">
-                            <span>Vencimiento: {formatearFechaSimple(cuota.fechaVencimiento)}</span>
+                            <span className={cuota.vencida ? 'text-red-700 font-bold' : ''}>Vencimiento: {formatearFechaSimple(cuota.fechaVencimiento)}</span>
                             {esParcial && (
                               <span className="text-blue-700 font-bold">
                                 · Abonado: ${formatearMonto(cuota.cubiertoEnEstaCuota)} (Resta: ${formatearMonto(cuota.restanteDeEstaCuota)})
@@ -543,6 +576,7 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
 
                       {/* Botón de cobro directo o confirmación */}
                       <div className="flex items-center gap-2 self-end sm:self-center">
+                        {cuota.vencida && <BotonWhatsApp datos={datosWhatsApp(cuota)} compacto />}
                         {esTotal ? (
                           <span className="text-xs font-bold text-emerald-800 bg-emerald-100/60 px-3 py-1.5 rounded-xl border border-emerald-200/80">
                             ✓ Cuota Completa
@@ -589,6 +623,11 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
                       <span className="font-bold text-slate-900 text-sm">
                         ${Number(p.monto_cobrado || p.monto_pago || 0).toLocaleString('es-AR')}
                       </span>
+                      {Number(p.punitorio) > 0 && (
+                        <span className="ml-2 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                          + Punitorio ${formatearMonto(p.punitorio)}
+                        </span>
+                      )}
                       <span className="text-slate-500 font-medium ml-2">
                         ({(p.metodo_pago || 'efectivo').toUpperCase()}) {p.observaciones ? `· ${p.observaciones}` : ''}
                       </span>

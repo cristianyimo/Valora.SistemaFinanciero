@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { RefreshCw, Users, Briefcase, CreditCard, TrendingUp } from 'lucide-react'
+import { RefreshCw, Users, CreditCard, TrendingUp } from 'lucide-react'
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -28,7 +28,6 @@ export default function GraficoEstadistico() {
   const [datosGrafico, setDatosGrafico] = useState([])
   const [totalesPeriodo, setTotalesPeriodo] = useState({
     clientes: 0,
-    inversionistas: 0,
     prestamos: 0,
     interes: 0
   })
@@ -44,15 +43,7 @@ export default function GraficoEstadistico() {
       
       if (errC) console.error('Error clientes:', errC)
 
-      // 2. Cargar Inversionistas (ahora con created_at)
-      const { data: inversionistas, error: errI } = await supabase
-        .from('usuarios')
-        .select('created_at')
-        .eq('rol', 'inversionista')
-      
-      if (errI) console.error('Error inversionistas:', errI)
-
-      // 3. Cargar Préstamos (utiliza fecha_inicio y created_at)
+      // 2. Cargar Préstamos (utiliza fecha_inicio y created_at)
       const { data: prestamos, error: errP } = await supabase
         .from('prestamos')
         .select('created_at, fecha_inicio, monto_capital, monto_total_pagar')
@@ -61,7 +52,6 @@ export default function GraficoEstadistico() {
       if (errP) console.error('Error préstamos:', errP)
 
       const listaClientes = clientes || []
-      const listaInversionistas = inversionistas || []
       const listaPrestamos = prestamos || []
 
       if (modo === 'anual') {
@@ -69,7 +59,6 @@ export default function GraficoEstadistico() {
           const numMes = index + 1
 
           const cantClientes = listaClientes.filter(c => coincideMes(c.created_at, anioSeleccionado, numMes)).length
-          const cantInversionistas = listaInversionistas.filter(i => coincideMes(i.created_at, anioSeleccionado, numMes)).length
           const prestamosMes = listaPrestamos.filter(p => coincideMes(p.fecha_inicio || p.created_at, anioSeleccionado, numMes))
           
           const interesMes = calcularInteres(prestamosMes)
@@ -77,7 +66,6 @@ export default function GraficoEstadistico() {
           return {
             periodo: nombreMes.substring(0, 3),
             clientes: cantClientes,
-            inversionistas: cantInversionistas,
             prestamos: prestamosMes.length,
             interes: interesMes
           }
@@ -94,7 +82,6 @@ export default function GraficoEstadistico() {
           const dia = i + 1
 
           const cantClientes = listaClientes.filter(c => coincideDia(c.created_at, anioSeleccionado, mesSeleccionado, dia)).length
-          const cantInversionistas = listaInversionistas.filter(inv => coincideDia(inv.created_at, anioSeleccionado, mesSeleccionado, dia)).length
           const prestamosDia = listaPrestamos.filter(p => coincideDia(p.fecha_inicio || p.created_at, anioSeleccionado, mesSeleccionado, dia))
           
           const interesDia = calcularInteres(prestamosDia)
@@ -102,7 +89,6 @@ export default function GraficoEstadistico() {
           return {
             periodo: dia.toString(),
             clientes: cantClientes,
-            inversionistas: cantInversionistas,
             prestamos: prestamosDia.length,
             interes: interesDia
           }
@@ -148,7 +134,6 @@ export default function GraficoEstadistico() {
   const actualizarTotales = (datos) => {
     setTotalesPeriodo({
       clientes: datos.reduce((acc, d) => acc + d.clientes, 0),
-      inversionistas: datos.reduce((acc, d) => acc + d.inversionistas, 0),
       prestamos: datos.reduce((acc, d) => acc + d.prestamos, 0),
       interes: datos.reduce((acc, d) => acc + d.interes, 0)
     })
@@ -256,21 +241,13 @@ export default function GraficoEstadistico() {
       </div>
 
       {/* Tarjetas Superiores */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 sm:p-5 rounded-3xl bg-white border border-line shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Nuevos Clientes</span>
             <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600"><Users className="w-4 h-4" /></div>
           </div>
           <p className="text-2xl font-bold text-slate-800">{totalesPeriodo.clientes}</p>
-        </div>
-
-        <div className="p-4 sm:p-5 rounded-3xl bg-white border border-line shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Inversores creados</span>
-            <div className="p-1.5 rounded-lg bg-amber-50 text-amber-600"><Briefcase className="w-4 h-4" /></div>
-          </div>
-          <p className="text-2xl font-bold text-slate-800">{totalesPeriodo.inversionistas}</p>
         </div>
 
         <div className="p-4 sm:p-5 rounded-3xl bg-white border border-line shadow-xs flex flex-col justify-between">
@@ -338,7 +315,6 @@ export default function GraficoEstadistico() {
               <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '11px', fontWeight: 'bold', color: '#475569' }} />
 
               <Bar yAxisId="left" dataKey="clientes" name="Clientes Nuevos" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={30} />
-              <Bar yAxisId="left" dataKey="inversionistas" name="Inversores" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={30} />
               <Bar yAxisId="left" dataKey="prestamos" name="Préstamos" fill="#0d6b63" radius={[4, 4, 0, 0]} maxBarSize={30} />
               
               <Line 

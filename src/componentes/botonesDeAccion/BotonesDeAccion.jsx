@@ -1,58 +1,51 @@
 import React from "react";
-import { 
-  Users, 
-  Briefcase, 
-  ShieldPlus, 
-  UserPlus, 
-  HandCoins, 
-  ReceiptText, 
-  BadgePercent
+import {
+  Users,
+  ShieldPlus,
+  HandCoins,
+  ReceiptText,
+  BadgePercent,
+  CalendarClock
 } from "lucide-react";
 import FiltroProvincia from "../barraSuperior/filtroPorProvincia";
 
 
-export default function BotonesDeAccion({ 
-  onOpenModal, 
-  onOpenClientes, 
-  onOpenInversionistas, 
-  provinciaSeleccionada, 
-  setProvinciaSeleccionada, 
+export default function BotonesDeAccion({
+  onOpenModal,
+  onOpenClientes,
+  onOpenCobranzas,
+  provinciaSeleccionada,
+  setProvinciaSeleccionada,
   provincias = [],
-  rolUsuario = "admin" 
+  rolUsuario = "admin"
 }) {
 
   const VISTAS = [
-    { 
+    {
       id: "clientes",
-      label: "Ver Clientes", 
-      icon: Users, 
-      onClick: onOpenClientes, 
-      roles: ["owner", "admin", "inversionista"] 
+      label: "Ver Clientes",
+      icon: Users,
+      onClick: onOpenClientes,
+      roles: ["owner", "admin", "inversionista"]
     },
-    { 
-      id: "inversionistas",
-      label: "Ver Inversionistas", 
-      icon: Briefcase, 
-      onClick: onOpenInversionistas, 
-      roles: ["owner", "admin"] 
+    {
+      id: "cobranzas",
+      label: "Cuotas y vencimientos",
+      icon: CalendarClock,
+      onClick: onOpenCobranzas,
+      roles: ["owner", "admin"]
     },
   ];
 
   // 2. CONFIGURACIÓN DE ALTAS Y MODALES
   const ACCIONES = [
-    { 
-      id: "admin", 
-      label: "Agregar admin", 
-      icon: ShieldPlus, 
-      roles: ["owner"] 
+    {
+      id: "admin",
+      label: "Agregar admin",
+      icon: ShieldPlus,
+      roles: ["owner"]
     },
-    { 
-      id: "inversionista", 
-      label: "Agregar inversor", 
-      icon: UserPlus, 
-      roles: ["owner", "admin"] 
-    },
-    { 
+    {
       id: "cliente", 
       label: "Agregar cliente", 
       icon: Users, 

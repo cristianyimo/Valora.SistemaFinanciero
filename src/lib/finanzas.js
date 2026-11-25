@@ -100,3 +100,69 @@ export function calcularCronograma(prestamo, totalCobrado) {
 
   return { cuotas, saldoPendiente, cuotaActual }
 }
+
+/** Días enteros entre dos fechas (b - a), ignorando la hora. */
+export function diasEntre(a, b) {
+  const da = parseFechaLocal(a instanceof Date ? fechaLocalDeDate(a) : a)
+  const db = parseFechaLocal(b instanceof Date ? fechaLocalDeDate(b) : b)
+  return Math.round((db - da) / 86400000)
+}
+
+function fechaLocalDeDate(d) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+/**
+ * Cronograma con fechas de vencimiento y estado de mora de cada cuota.
+ * Agrega a cada cuota: fechaVencimiento (Date), diasAtraso y vencida (bool).
+ */
+export function cronogramaConVencimientos(prestamo, totalCobrado, hoy = hoyLocalISO()) {
+  const base = calcularCronograma(prestamo, totalCobrado)
+  const fechaInicio = prestamo?.fecha_inicio || prestamo?.created_at
+  const cuotas = base.cuotas.map((c) => {
+    const fechaVencimiento = calcularFechaVencimiento(fechaInicio, c.numeroCuota, prestamo?.frecuencia)
+    const atraso = diasEntre(fechaVencimiento, hoy)
+    const vencida = c.estado !== 'total' && atraso > 0
+    return { ...c, fechaVencimiento, diasAtraso: vencida ? atraso : 0, vencida }
+  })
+  return { ...base, cuotas, cuotaActual: cuotas.find((c) => c.estado !== 'total') || null }
+}
+
+/**
+ * Punitorio de una cuota vencida:
+ *   saldo impago de la cuota × tasa% × (bloques completos de `cadaDias` días de atraso)
+ * Ej: cuota $10.000, 0,5% cada 1 día, 12 días → 10.000 × 0,005 × 12 = $600
+ *     cuota $10.000, 2% cada 5 días, 12 días → 10.000 × 0,02 × 2 = $400
+ */
+export function calcularPunitorio(montoImpago, diasAtraso, tasaPorcentaje, cadaDias = 1) {
+  const intervalo = Math.max(1, Math.floor(Number(cadaDias) || 1))
+  const periodos = Math.floor(Math.max(0, Number(diasAtraso) || 0) / intervalo)
+  const tasa = Math.max(0, Number(tasaPorcentaje) || 0)
+  return redondear2(Math.max(0, Number(montoImpago) || 0) * (tasa / 100) * periodos)
+}
+
+/** Punitorio total de un conjunto de cuotas vencidas. */
+export function punitorioTotal(cuotasVencidas, tasaPorcentaje, cadaDias) {
+  return redondear2(
+    (cuotasVencidas || []).reduce((acc, c) => acc + calcularPunitorio(c.restante, c.diasAtraso, tasaPorcentaje, cadaDias), 0)
+  )
+}
+
+/** Configuración de punitorio recordada en este equipo (solo como valor por defecto). */
+const CLAVE_CONFIG_PUNITORIO = 'valora.punitorio'
+export function leerConfigPunitorio() {
+  try {
+    const guardado = JSON.parse(localStorage.getItem(CLAVE_CONFIG_PUNITORIO) || 'null')
+    if (guardado && guardado.tasa >= 0 && guardado.cadaDias >= 1) return guardado
+  } catch {
+    // sin almacenamiento disponible: se usan los valores por defecto
+  }
+  return { tasa: 0.5, cadaDias: 1 }
+}
+export function guardarConfigPunitorio(config) {
+  try {
+    localStorage.setItem(CLAVE_CONFIG_PUNITORIO, JSON.stringify(config))
+  } catch {
+    // ignorar
+  }
+}

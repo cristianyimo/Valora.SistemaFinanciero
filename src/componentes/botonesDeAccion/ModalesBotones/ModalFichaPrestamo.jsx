@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react'
-import { 
-  X, User, Briefcase, CheckCircle2, Clock, Calendar, 
-  DollarSign, Receipt, PlusCircle, AlertCircle, ArrowRight, CornerDownRight 
+import {
+  X, User, Briefcase, CheckCircle2, Clock, Calendar,
+  DollarSign, Receipt, AlertCircle
 } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import {
+  hoyLocalISO, fechaFormularioATimestamp, calcularFechaVencimiento,
+  calcularCronograma, redondear2, TOLERANCIA_SALDO
+} from '../../../lib/finanzas'
+
+const formatearMonto = (n) => Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })
 
 export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioLogueado = null, onCobroRegistrado }) {
   const [pagos, setPagos] = useState([])
@@ -19,7 +25,7 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
   const [cobroData, setCobroData] = useState({
     monto_cobrado: '',
     metodo_pago: 'efectivo',
-    fecha_pago: new Date().toISOString().split('T')[0],
+    fecha_pago: hoyLocalISO(),
     observaciones: ''
   })
 
@@ -79,75 +85,41 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
   const capital = Number(prestamo.monto_capital || prestamo.monto || 0)
   const totalPagar = Number(prestamo.monto_total_pagar || prestamo.monto_total || 0)
   const totalCobrado = pagos.reduce((acc, p) => acc + Number(p.monto_cobrado || p.monto_pago || 0), 0)
-  const saldoRestante = Math.max(0, totalPagar - totalCobrado)
+  const saldoRestante = Math.max(0, redondear2(totalPagar - totalCobrado))
   const porcentajeCobrado = totalPagar > 0 ? Math.min(100, Math.round((totalCobrado / totalPagar) * 100)) : 0
 
   const cantidadCuotas = Number(prestamo.cantidad_cuotas || 1)
   const valorCuotaCalculado = Number(prestamo.monto_cuota || (totalPagar / cantidadCuotas) || 0)
 
-  // Función para calcular la fecha teórica de vencimiento
-  const calcularFechaVencimiento = (fechaInicioStr, numeroCuota, frecuencia) => {
-    if (!fechaInicioStr) return new Date()
-    const fecha = new Date(fechaInicioStr)
-    const freq = (frecuencia || 'mensual').toLowerCase()
-
-    if (freq.includes('diari')) {
-      fecha.setDate(fecha.getDate() + (numeroCuota - 1))
-    } else if (freq.includes('seman')) {
-      fecha.setDate(fecha.getDate() + (numeroCuota - 1) * 7)
-    } else if (freq.includes('quincen')) {
-      fecha.setDate(fecha.getDate() + (numeroCuota - 1) * 15)
-    } else {
-      fecha.setMonth(fecha.getMonth() + (numeroCuota - 1))
-    }
-    return fecha
-  }
-
-  // --- DESGLOSE CON DISTRIBUCIÓN DE PAGOS TOTALES Y PARCIALES ---
-  let acumuladorCobrado = totalCobrado
+  // --- DESGLOSE CON DISTRIBUCIÓN DE PAGOS TOTALES Y PARCIALES (en centavos) ---
   const fechaBase = prestamo.fecha_inicio || prestamo.created_at
-  const tablaCuotas = []
+  const { cuotas: cronograma } = calcularCronograma(
+    { ...prestamo, monto_total_pagar: totalPagar, cantidad_cuotas: cantidadCuotas, monto_cuota: valorCuotaCalculado },
+    totalCobrado
+  )
+  const tablaCuotas = cronograma.map((c) => ({
+    numeroCuota: c.numeroCuota,
+    monto: c.monto,
+    fechaVencimiento: calcularFechaVencimiento(fechaBase, c.numeroCuota, prestamo.frecuencia),
+    estadoCuota: c.estado,
+    cubiertoEnEstaCuota: c.cubierto,
+    restanteDeEstaCuota: c.restante
+  }))
 
-  for (let i = 1; i <= cantidadCuotas; i++) {
-    const fechaVencimiento = calcularFechaVencimiento(fechaBase, i, prestamo.frecuencia)
-    
-    let estadoCuota = 'pendiente' // 'total' | 'parcial' | 'pendiente'
-    let cubiertoEnEstaCuota = 0
-    let restanteDeEstaCuota = valorCuotaCalculado
-
-    if (acumuladorCobrado >= valorCuotaCalculado) {
-      estadoCuota = 'total'
-      cubiertoEnEstaCuota = valorCuotaCalculado
-      restanteDeEstaCuota = 0
-      acumuladorCobrado -= valorCuotaCalculado
-    } else if (acumuladorCobrado > 0) {
-      estadoCuota = 'parcial'
-      cubiertoEnEstaCuota = acumuladorCobrado
-      restanteDeEstaCuota = Math.max(0, valorCuotaCalculado - acumuladorCobrado)
-      acumuladorCobrado = 0
-    }
-
-    tablaCuotas.push({
-      numeroCuota: i,
-      monto: valorCuotaCalculado,
-      fechaVencimiento,
-      estadoCuota,
-      cubiertoEnEstaCuota,
-      restanteDeEstaCuota
-    })
-  }
+  const prestamoCancelado = totalPagar > 0 && saldoRestante <= TOLERANCIA_SALDO
+  const estadoMostrado = prestamoCancelado ? 'finalizado' : prestamo.estado
 
   // Abrir formulario de cobro para una cuota específica o general
   const handleAbrirCobro = (cuota = null) => {
     setCuotaDestinoCobro(cuota)
-    const montoSugerido = cuota 
-      ? (cuota.estadoCuota === 'parcial' ? cuota.restanteDeEstaCuota : cuota.monto)
+    const montoSugerido = cuota
+      ? Math.min(cuota.restanteDeEstaCuota, saldoRestante)
       : Math.min(valorCuotaCalculado, saldoRestante)
 
     setCobroData({
-      monto_cobrado: montoSugerido > 0 ? String(Math.round(montoSugerido)) : '',
+      monto_cobrado: montoSugerido > 0 ? redondear2(montoSugerido).toFixed(2) : '',
       metodo_pago: 'efectivo',
-      fecha_pago: new Date().toISOString().split('T')[0],
+      fecha_pago: hoyLocalISO(),
       observaciones: cuota ? `Pago Cuota #${cuota.numeroCuota}` : ''
     })
     setErrorCobro('')
@@ -160,55 +132,86 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
     setGuardandoCobro(true)
     setErrorCobro('')
 
-    const montoNum = parseFloat(cobroData.monto_cobrado)
-    if (!montoNum || montoNum <= 0) {
+    const montoNum = redondear2(parseFloat(cobroData.monto_cobrado))
+    if (!(montoNum > 0)) {
       setErrorCobro('Ingresá un monto de cobro válido.')
       setGuardandoCobro(false)
       return
     }
 
+    if (montoNum > saldoRestante + 0.009) {
+      setErrorCobro(`El monto supera el saldo pendiente ($${saldoRestante.toLocaleString('es-AR', { minimumFractionDigits: 2 })}).`)
+      setGuardandoCobro(false)
+      return
+    }
+
     try {
+      let autorId = usuarioLogueado?.id || null
+      if (!autorId) {
+        const { data: authData } = await supabase.auth.getUser()
+        autorId = authData?.user?.id || null
+      }
+
       const payloadPago = {
         prestamo_id: prestamo.id,
         cliente_id: prestamo.cliente_id,
         inversionista_id: prestamo.inversionista_id || null,
         monto_cobrado: montoNum,
         metodo_pago: cobroData.metodo_pago,
-        fecha_pago: new Date(cobroData.fecha_pago).toISOString(),
+        fecha_pago: fechaFormularioATimestamp(cobroData.fecha_pago),
         observaciones: cobroData.observaciones?.trim() || null,
-        creado_por: usuarioLogueado?.id || null
+        creado_por: autorId
       }
 
-      const { error: errInsert } = await supabase
+      const { data: pagoCreado, error: errInsert } = await supabase
         .from('pagos')
         .insert([payloadPago])
+        .select()
+        .single()
 
       if (errInsert) throw errInsert
 
       // Si con este cobro se completa el saldo total, marcar préstamo como finalizado
-      const nuevoTotalCobrado = totalCobrado + montoNum
-      if (nuevoTotalCobrado >= totalPagar && prestamo.estado !== 'finalizado') {
-        await supabase
+      // (se recalcula desde la base para no depender de datos desactualizados)
+      const { data: todosLosPagos, error: errSum } = await supabase
+        .from('pagos')
+        .select('monto_cobrado')
+        .eq('prestamo_id', prestamo.id)
+
+      if (errSum) throw errSum
+
+      const totalAcumuladoDB = (todosLosPagos || []).reduce((acc, p) => acc + Number(p.monto_cobrado || 0), 0)
+      if (totalAcumuladoDB >= totalPagar - TOLERANCIA_SALDO && prestamo.estado !== 'finalizado') {
+        const { error: errEstado } = await supabase
           .from('prestamos')
           .update({ estado: 'finalizado' })
           .eq('id', prestamo.id)
+
+        if (errEstado) throw errEstado
       }
 
       // Registro en auditoría
-      await supabase
+      const nombreCliente = cliente?.nombre_completo || prestamo.clientes?.nombre_completo || 'Cliente'
+      const { error: errAudit } = await supabase
         .from('auditoria_actividades')
         .insert([{
           tipo: 'COBRO',
-          accion: 'CREADO',
-          titulo: `Cobro $${montoNum.toLocaleString('es-AR')}`,
-          subtitulo: `Préstamo #${prestamo.id?.toString().substring(0, 8)}`,
-          detalles: `Método: ${cobroData.metodo_pago.toUpperCase()} · Cliente: ${cliente?.nombre_completo || 'Cliente'}`,
-          persona: cliente?.nombre_completo || 'Cliente',
-          autor_id: usuarioLogueado?.id || null,
-          autor_nombre: usuarioLogueado?.nombre_completo || 'Administración',
+          accion: 'COBRO',
+          titulo: `Ingreso $${montoNum.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`,
+          subtitulo: `Cobro a ${nombreCliente}`,
+          detalles: `Método: ${cobroData.metodo_pago}${cobroData.observaciones?.trim() ? ` · ${cobroData.observaciones.trim()}` : ''}`,
+          persona: nombreCliente,
+          autor_id: autorId,
+          autor_nombre: usuarioLogueado?.nombre || 'Administración',
           autor_rol: usuarioLogueado?.rol || 'admin',
-          estado: 'Cobro Registrado'
+          estado: 'Registrado',
+          metadata: {
+            ...(pagoCreado || payloadPago),
+            clientes: { nombre_completo: nombreCliente }
+          }
         }])
+
+      if (errAudit) console.warn('Aviso al registrar auditoría de cobro:', errAudit.message)
 
       setMostrarFormCobro(false)
       await cargarDetallesPrestamo()
@@ -242,9 +245,9 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
                 FICHA TÉCNICA DE PRÉSTAMO
               </span>
               <span className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full ${
-                prestamo.estado === 'finalizado' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'
+                estadoMostrado === 'finalizado' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'
               }`}>
-                {prestamo.estado === 'finalizado' ? 'FINALIZADO' : prestamo.estado || 'ACTIVO'}
+                {estadoMostrado === 'finalizado' ? 'FINALIZADO' : estadoMostrado || 'ACTIVO'}
               </span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#1d2939] mt-0.5">
@@ -460,7 +463,7 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
                 Cronograma de Cuotas ({cantidadCuotas})
               </h4>
               <span className="text-xs font-semibold text-slate-500 bg-white px-2.5 py-1 rounded-lg border border-line">
-                Cobrado: ${totalCobrado.toLocaleString('es-AR')} de${totalPagar.toLocaleString('es-AR')}
+                Cobrado: ${formatearMonto(totalCobrado)} de ${formatearMonto(totalPagar)}
               </span>
             </div>
 
@@ -501,7 +504,7 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-bold text-slate-900 text-sm">
-                              Cuota #{cuota.numeroCuota} — ${Math.round(cuota.monto).toLocaleString('es-AR')}
+                              Cuota #{cuota.numeroCuota} — ${formatearMonto(cuota.monto)}
                             </span>
 
                             {/* Badge de estado */}
@@ -531,7 +534,7 @@ export default function ModalFichaPrestamo({ isOpen, onClose, prestamo, usuarioL
                             <span>Vencimiento: {formatearFechaSimple(cuota.fechaVencimiento)}</span>
                             {esParcial && (
                               <span className="text-blue-700 font-bold">
-                                · Abonado: ${Math.round(cuota.cubiertoEnEstaCuota).toLocaleString('es-AR')} (Resta:${Math.round(cuota.restanteDeEstaCuota).toLocaleString('es-AR')})
+                                · Abonado: ${formatearMonto(cuota.cubiertoEnEstaCuota)} (Resta: ${formatearMonto(cuota.restanteDeEstaCuota)})
                               </span>
                             )}
                           </div>

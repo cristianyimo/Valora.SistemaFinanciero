@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { User, Briefcase, X, Users, ChevronDown } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { fechaLocalISO } from '../../../lib/finanzas'
 
 import ModalEditarInversionista from './ModalEditarInversionista'
 import ModalEditarCliente from './ModalEditarCliente'
@@ -280,7 +281,7 @@ export default function ModalDirectorio({
 
   const formatearFecha = (fechaRaw) => {
     if (!fechaRaw) return ''
-    const fecha = fechaRaw.split('T')[0]
+    const fecha = fechaLocalISO(fechaRaw)
     const [year, month, day] = fecha.split('-')
     return `${day}/${month}/${year}`
   }

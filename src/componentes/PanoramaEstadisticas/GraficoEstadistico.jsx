@@ -12,6 +12,7 @@ import {
   CartesianGrid
 } from 'recharts'
 import { supabase } from '../../lib/supabaseClient'
+import { fechaLocalISO } from '../../lib/finanzas'
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -55,7 +56,8 @@ export default function GraficoEstadistico() {
       const { data: prestamos, error: errP } = await supabase
         .from('prestamos')
         .select('created_at, fecha_inicio, monto_capital, monto_total_pagar')
-      
+        .or('estado.is.null,estado.neq.cancelado')
+
       if (errP) console.error('Error préstamos:', errP)
 
       const listaClientes = clientes || []
@@ -117,16 +119,18 @@ export default function GraficoEstadistico() {
     }
   }
 
-  // Comparadores directos de texto para evitar errores de huso horario
-  const coincideMes = (fechaStr, anio, mes) => {
-    if (!fechaStr) return false
+  // Comparadores de texto sobre la fecha LOCAL (los timestamps vienen en UTC)
+  const coincideMes = (fechaRaw, anio, mes) => {
+    if (!fechaRaw) return false
+    const fechaStr = fechaLocalISO(fechaRaw)
     const year = parseInt(fechaStr.substring(0, 4), 10)
     const month = parseInt(fechaStr.substring(5, 7), 10)
     return year === Number(anio) && month === Number(mes)
   }
 
-  const coincideDia = (fechaStr, anio, mes, dia) => {
-    if (!fechaStr) return false
+  const coincideDia = (fechaRaw, anio, mes, dia) => {
+    if (!fechaRaw) return false
+    const fechaStr = fechaLocalISO(fechaRaw)
     const year = parseInt(fechaStr.substring(0, 4), 10)
     const month = parseInt(fechaStr.substring(5, 7), 10)
     const day = parseInt(fechaStr.substring(8, 10), 10)

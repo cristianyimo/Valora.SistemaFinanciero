@@ -23,6 +23,7 @@ import GraficoEstadistico from './componentes/PanoramaEstadisticas/GraficoEstadi
 export default function App() {
   const [usuario, setUsuario] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
+  const [avisoLogin, setAvisoLogin] = useState('')
 
   const [prestamoFicha, setPrestamoFicha] = useState(null)
   const [modalActivo, setModalActivo] = useState(null)
@@ -63,6 +64,18 @@ export default function App() {
         .select('*')
         .eq('id', sessionUser.id)
         .maybeSingle()
+
+      // Un usuario desactivado no puede ingresar al sistema
+      if (profile && profile.activo === false) {
+        // Diferido: llamar a auth dentro de onAuthStateChange puede bloquear supabase-js
+        setTimeout(() => supabase.auth.signOut(), 0)
+        setUsuario(null)
+        setAvisoLogin('Tu cuenta está desactivada. Contactá al administrador.')
+        redimensionarVentana(false)
+        return
+      }
+
+      setAvisoLogin('')
 
       // Sin perfil en la tabla 'usuarios' se asigna el rol con menos privilegios
       const rolAsignado = profile?.rol || 'inversionista'
@@ -149,7 +162,7 @@ export default function App() {
   }
 
   if (!usuario) {
-    return <Login onLoginSuccess={(u) => cargarPerfilUsuario(u)} />
+    return <Login key={avisoLogin} avisoInicial={avisoLogin} onLoginSuccess={(u) => cargarPerfilUsuario(u)} />
   }
 
   const esAdmin = usuario.rol === 'admin' || usuario.rol === 'owner'
@@ -201,6 +214,7 @@ export default function App() {
         isOpen={modalActivo === 'admin'}
         onClose={() => setModalActivo(null)}
         onSuccess={handleRefreshData}
+        usuarioLogueado={usuario}
       />
 
       <ModalCliente
@@ -208,6 +222,7 @@ export default function App() {
         isOpen={modalActivo === 'cliente'}
         onClose={() => setModalActivo(null)}
         onSuccess={handleRefreshData}
+        usuarioLogueado={usuario}
       />
 
       <ModalAgregarOpcionPrestamo
@@ -222,6 +237,7 @@ export default function App() {
         isOpen={modalActivo === 'prestamo'}
         onClose={() => setModalActivo(null)}
         onSuccess={handleRefreshData}
+        usuarioLogueado={usuario}
       />
 
       <ModalPago
@@ -253,6 +269,7 @@ export default function App() {
           setPrestamoFicha(null)
         }}
         prestamo={prestamoFicha}
+        usuarioLogueado={usuario}
       />
 
       {/* Métricas y Estadísticas */}

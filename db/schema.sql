@@ -15,7 +15,6 @@ CREATE TABLE IF NOT EXISTS provincias (
 -- El id coincide con auth.users.id de Supabase Auth.
 CREATE TABLE IF NOT EXISTS usuarios (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  nombre VARCHAR(255),
   nombre_completo VARCHAR(255) NOT NULL,
   dni VARCHAR(50),
   email VARCHAR(255),
@@ -35,7 +34,6 @@ CREATE TABLE IF NOT EXISTS clientes (
   nombre_completo VARCHAR(255) NOT NULL,
   dni VARCHAR(50),
   telefono VARCHAR(100),
-  email VARCHAR(255),
   direccion TEXT,
   inversionista_id UUID REFERENCES usuarios(id) ON DELETE SET NULL,
   provincia_id UUID REFERENCES provincias(id) ON DELETE SET NULL,
@@ -66,7 +64,6 @@ CREATE TABLE IF NOT EXISTS prestamos (
   provincia_id UUID REFERENCES provincias(id) ON DELETE SET NULL,
   creado_por UUID REFERENCES usuarios(id) ON DELETE SET NULL,
   monto_capital NUMERIC(12,2) NOT NULL,
-  tasa_interes NUMERIC(5,2),
   monto_total_pagar NUMERIC(12,2) NOT NULL,
   monto_cuota NUMERIC(12,2) NOT NULL,
   cantidad_cuotas INT NOT NULL DEFAULT 1,
@@ -76,15 +73,8 @@ CREATE TABLE IF NOT EXISTS prestamos (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Tabla de Cuotas
-CREATE TABLE IF NOT EXISTS cuotas (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  prestamo_id UUID REFERENCES prestamos(id) ON DELETE CASCADE,
-  numero_cuota INT NOT NULL,
-  monto NUMERIC(12,2) NOT NULL,
-  fecha_vencimiento DATE,
-  estado VARCHAR(50) DEFAULT 'pendiente'
-);
+-- Las cuotas no se guardan en una tabla: el cronograma se calcula en la app
+-- a partir del préstamo y sus pagos (ver src/lib/finanzas.js).
 
 -- Tabla de Pagos
 CREATE TABLE IF NOT EXISTS pagos (

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { X, Receipt, AlertCircle } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { hoyLocalISO, fechaFormularioATimestamp, calcularCronograma, redondear2, TOLERANCIA_SALDO } from '../../../lib/finanzas'
 
 export default function ModalPago({ isOpen, onClose, onSuccess, usuarioLogueado = null }) {
   const [clientes, setClientes] = useState([])
@@ -15,7 +16,7 @@ export default function ModalPago({ isOpen, onClose, onSuccess, usuarioLogueado 
     prestamo_id: '',
     monto_pago: '',
     metodo_pago: 'efectivo',
-    fecha_pago: new Date().toISOString().split('T')[0],
+    fecha_pago: hoyLocalISO(),
     observaciones: ''
   })
 
@@ -40,7 +41,7 @@ export default function ModalPago({ isOpen, onClose, onSuccess, usuarioLogueado 
         prestamo_id: '',
         monto_pago: '',
         metodo_pago: 'efectivo',
-        fecha_pago: new Date().toISOString().split('T')[0],
+        fecha_pago: hoyLocalISO(),
         observaciones: ''
       })
       setPrestamosCliente([])
@@ -62,7 +63,7 @@ export default function ModalPago({ isOpen, onClose, onSuccess, usuarioLogueado 
           .from('prestamos')
           .select('cliente_id')
           .eq('inversionista_id', invId)
-          .neq('estado', 'finalizado')
+          .not('estado', 'in', '(finalizado,cancelado)')
 
         if (errP) throw errP
 
@@ -85,7 +86,7 @@ export default function ModalPago({ isOpen, onClose, onSuccess, usuarioLogueado 
         const { data: prestamosActivos, error: errP } = await supabase
           .from('prestamos')
           .select('cliente_id')
-          .neq('estado', 'finalizado')
+          .not('estado', 'in', '(finalizado,cancelado)')
 
         if (errP) throw errP
 
@@ -129,7 +130,7 @@ export default function ModalPago({ isOpen, onClose, onSuccess, usuarioLogueado 
           .from('prestamos')
           .select('*')
           .eq('cliente_id', formData.cliente_id)
-          .neq('estado', 'finalizado')
+          .not('estado', 'in', '(finalizado,cancelado)')
 
         if (usuarioLogueado?.rol === 'inversionista' && usuarioLogueado?.id) {
           query = query.eq('inversionista_id', usuarioLogueado.id)
@@ -175,26 +176,15 @@ export default function ModalPago({ isOpen, onClose, onSuccess, usuarioLogueado 
         
         const montoTotalPagar = Number(prestamo.monto_total_pagar || 0)
         const cantidadCuotas = Math.max(1, Number(prestamo.cantidad_cuotas || 1))
-        
-        const montoCuotaCalculado = montoTotalPagar / cantidadCuotas
-        const montoCuota = Number(prestamo.monto_cuota) || montoCuotaCalculado || 0
-        
-        const saldoPendienteTotal = Math.max(0, montoTotalPagar - totalPagado)
 
-        const cuotasCompletadas = Math.floor(totalPagado / (montoCuota || 1))
-        const pagadoCuotaActual = totalPagado % (montoCuota || 1)
+        // Cálculo en centavos para evitar errores de coma flotante
+        const { saldoPendiente: saldoPendienteTotal, cuotaActual } = calcularCronograma(prestamo, totalPagado)
 
-        let numeroCuotaActual = cuotasCompletadas + 1
-        if (numeroCuotaActual > cantidadCuotas) {
-          numeroCuotaActual = cantidadCuotas
-        }
-
-        let pendienteCuotaActual = montoCuota - pagadoCuotaActual
-        if (pendienteCuotaActual > saldoPendienteTotal) {
-          pendienteCuotaActual = saldoPendienteTotal
-        }
-
-        const esParcial = pagadoCuotaActual > 0 && pagadoCuotaActual < montoCuota
+        const montoCuota = cuotaActual ? cuotaActual.monto : Number(prestamo.monto_cuota || 0)
+        const numeroCuotaActual = cuotaActual ? cuotaActual.numeroCuota : cantidadCuotas
+        const pagadoCuotaActual = cuotaActual ? cuotaActual.cubierto : 0
+        const pendienteCuotaActual = cuotaActual ? Math.min(cuotaActual.restante, saldoPendienteTotal) : 0
+        const esParcial = cuotaActual ? cuotaActual.estado === 'parcial' : false
 
         setDetalleCobro({
           montoTotalPagar,
@@ -256,9 +246,15 @@ export default function ModalPago({ isOpen, onClose, onSuccess, usuarioLogueado 
       return
     }
 
-    const monto = parseFloat(formData.monto_pago || 0)
-    if (monto <= 0) {
+    const monto = redondear2(parseFloat(formData.monto_pago || 0))
+    if (!(monto > 0)) {
       setErrorMsg('El monto a cobrar debe ser mayor a 0.')
+      setLoading(false)
+      return
+    }
+
+    if (monto > detalleCobro.saldoPendienteTotal + 0.009) {
+      setErrorMsg(`El monto supera el saldo pendiente del préstamo ($${detalleCobro.saldoPendienteTotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}).`)
       setLoading(false)
       return
     }
@@ -299,7 +295,7 @@ export default function ModalPago({ isOpen, onClose, onSuccess, usuarioLogueado 
         creado_por: usuarioId || null,
         monto_cobrado: monto,
         metodo_pago: formData.metodo_pago,
-        fecha_pago: formData.fecha_pago ? new Date(`${formData.fecha_pago}T12:00:00Z`).toISOString() : new Date().toISOString(),
+        fecha_pago: fechaFormularioATimestamp(formData.fecha_pago),
         observaciones: formData.observaciones?.trim() || null
       }
 
@@ -350,7 +346,7 @@ export default function ModalPago({ isOpen, onClose, onSuccess, usuarioLogueado 
 
       const montoTotalPagar = Number(prestamoActual?.monto_total_pagar || 0)
 
-      if (totalAcumuladoDB >= (montoTotalPagar - 0.50)) {
+      if (totalAcumuladoDB >= (montoTotalPagar - TOLERANCIA_SALDO)) {
         const { error: errorPrestamo } = await supabase
           .from('prestamos')
           .update({ estado: 'finalizado' })

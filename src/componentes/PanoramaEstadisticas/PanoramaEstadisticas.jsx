@@ -10,6 +10,7 @@ import {
   Wallet
 } from 'lucide-react'
 import { supabase } from '../../lib/supabaseClient'
+import { fechaLocalISO } from '../../lib/finanzas'
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -40,7 +41,8 @@ export default function PanoramaOperativo({
   // Comparador robusto de fechas (YYYY-MM)
   const coincideMes = (fechaStr, anio, mes) => {
     if (!fechaStr) return false
-    const match = String(fechaStr).match(/^(\d{4})-(\d{2})/)
+    // Los timestamps vienen en UTC: se pasan a fecha local antes de comparar
+    const match = fechaLocalISO(fechaStr).match(/^(\d{4})-(\d{2})/)
     if (!match) return false
     const y = parseInt(match[1], 10)
     const m = parseInt(match[2], 10)
@@ -68,7 +70,7 @@ export default function PanoramaOperativo({
       // 2. Préstamos
       const { data: prestamos, error: errP } = await supabase
         .from('prestamos')
-        .select('id, created_at, fecha_inicio, monto_capital, monto_total_pagar')
+        .select('id, created_at, fecha_inicio, monto_capital, monto_total_pagar, estado')
 
       if (errP) console.error('Error al cargar préstamos:', errP.message)
 
@@ -79,8 +81,10 @@ export default function PanoramaOperativo({
 
       if (errPagos) console.error('Error al cargar pagos:', errPagos.message)
 
-      const todosLosPrestamos = prestamos || []
-      const todosLosPagos = pagos || []
+      // Los préstamos cancelados (anulados) no cuentan en las métricas
+      const todosLosPrestamos = (prestamos || []).filter((p) => p.estado !== 'cancelado')
+      const idsPrestamosValidos = new Set(todosLosPrestamos.map((p) => p.id))
+      const todosLosPagos = (pagos || []).filter((p) => idsPrestamosValidos.has(p.prestamo_id))
 
       // 💡 MAPA DE PRÉSTAMOS: Calcula el ratio de ganancia (interés / total) por cada préstamo
       const mapaPrestamos = {}
@@ -128,10 +132,16 @@ export default function PanoramaOperativo({
       const totalADevolverHistorico = todosLosPrestamos.reduce((acc, p) => acc + Number(p.monto_total_pagar || 0), 0)
       const totalCobradoHistorico = todosLosPagos.reduce((acc, p) => acc + Number(p.monto_cobrado || 0), 0)
       
-      // En modo mes calcula lo pendiente de ese mes; en histórico, la cartera activa global
+      // En modo mes: lo que falta cobrar de los préstamos otorgados ese mes
+      // (se restan todos los cobros de ESOS préstamos, no los cobros del mes
+      // que pertenecen a otros préstamos). En histórico: la cartera global.
+      const idsPrestamosPeriodo = new Set(prestamosFiltrados.map((p) => p.id))
       const totalADevolverPeriodo = prestamosFiltrados.reduce((acc, p) => acc + Number(p.monto_total_pagar || 0), 0)
+      const cobradoDePrestamosPeriodo = todosLosPagos
+        .filter((p) => idsPrestamosPeriodo.has(p.prestamo_id))
+        .reduce((acc, p) => acc + Number(p.monto_cobrado || 0), 0)
       const balancePendiente = filtroPeriodo === 'mes'
-        ? Math.max(0, totalADevolverPeriodo - totalCobrado)
+        ? Math.max(0, totalADevolverPeriodo - cobradoDePrestamosPeriodo)
         : Math.max(0, totalADevolverHistorico - totalCobradoHistorico)
 
       setMetricas({

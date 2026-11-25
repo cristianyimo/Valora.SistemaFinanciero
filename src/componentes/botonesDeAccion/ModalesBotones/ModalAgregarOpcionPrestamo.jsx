@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { X, Plus, Trash2, Edit2, Layers, CreditCard, Search, ArrowLeft } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
 
-export default function ModalCrearPlan({ isOpen, onClose, onSuccess, usuarioLogueado = null }) {
+export default function ModalCrearPlan({ isOpen, onClose, onSuccess }) {
   // Lista de planes existentes
   const [planes, setPlanes] = useState([])
   const [busqueda, setBusqueda] = useState('')
@@ -167,6 +167,18 @@ export default function ModalCrearPlan({ isOpen, onClose, onSuccess, usuarioLogu
       .filter((op) => !isNaN(op.cuotas) && op.cuotas > 0)
       .sort((a, b) => a.cuotas - b.cuotas)
 
+    if (!nombreLimpio) {
+      setErrorMsg('El nombre de la opción es obligatorio.')
+      setLoadingGuardado(false)
+      return
+    }
+
+    if (!(montoNum > 0)) {
+      setErrorMsg('El monto del préstamo debe ser mayor a 0.')
+      setLoadingGuardado(false)
+      return
+    }
+
     if (opcionesValidadas.length === 0) {
       setErrorMsg('Debes ingresar al menos una cuota válida.')
       setLoadingGuardado(false)
@@ -194,8 +206,7 @@ export default function ModalCrearPlan({ isOpen, onClose, onSuccess, usuarioLogu
 
         if (error) throw error
       } else {
-        // CREAR NUEVO
-        payload.creado_por = usuarioLogueado?.id || null
+        // CREAR NUEVO (la tabla planes_prestamo no tiene columna creado_por)
         const { error } = await supabase.from('planes_prestamo').insert([payload])
         if (error) throw error
       }

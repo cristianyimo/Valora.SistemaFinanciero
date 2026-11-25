@@ -72,13 +72,19 @@ export default function ModalEditarCliente({ isOpen, onClose, onSuccess, cliente
       return
     }
 
+    if (formData.origen === 'inversionista' && !formData.inversionista_id) {
+      setErrorMsg('Debes seleccionar el inversionista asignado.')
+      setLoading(false)
+      return
+    }
+
     try {
       const payload = {
         nombre_completo: formData.nombre_completo.trim(),
         dni: formData.dni.trim() || null,
         telefono: formData.telefono.trim() || null,
         direccion: formData.direccion.trim() || null,
-        inversionista_id: formData.origen === 'inversionista' ? formData.inversionista_id : null,
+        inversionista_id: formData.origen === 'inversionista' ? (formData.inversionista_id || null) : null,
         provincia_id: formData.provincia_id || null
       }
 

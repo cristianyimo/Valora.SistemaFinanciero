@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { X, Calculator, CheckCircle2 } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { hoyLocalISO, redondear2 } from '../../../lib/finanzas'
 
 export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuarioLogueado = null }) {
   const [planes, setPlanes] = useState([])
@@ -15,7 +16,7 @@ export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuario
     plan_id: '',
     cliente_id: '',
     inversionista_id: '',
-    fecha_inicio: new Date().toISOString().split('T')[0],
+    fecha_inicio: hoyLocalISO(),
     cuota_seleccionada_index: 0
   })
 
@@ -30,7 +31,7 @@ export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuario
       plan_id: '',
       cliente_id: '',
       inversionista_id: '',
-      fecha_inicio: new Date().toISOString().split('T')[0],
+      fecha_inicio: hoyLocalISO(),
       cuota_seleccionada_index: 0
     })
 
@@ -58,8 +59,9 @@ export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuario
         // C. Cargar Inversionistas desde 'usuarios'
         const { data: dataInvs, error: errInvs } = await supabase
           .from('usuarios')
-          .select('id, nombre_completo, rol')
+          .select('id, nombre_completo, rol, activo')
           .eq('rol', 'inversionista')
+          .or('activo.is.null,activo.eq.true')
           .order('nombre_completo', { ascending: true })
 
         if (errInvs) throw errInvs
@@ -89,8 +91,8 @@ export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuario
   const montoCapital = Number(planSeleccionado?.monto || 0)
   const tasaInteres = Number(opcionCuotaActiva.interes || 0)
   const cantidadCuotas = Math.max(1, Number(opcionCuotaActiva.cuotas || 1))
-  const montoTotalDevolver = montoCapital > 0 ? montoCapital * (1 + tasaInteres / 100) : 0
-  const valorCuota = montoCapital > 0 ? montoTotalDevolver / cantidadCuotas : 0
+  const montoTotalDevolver = montoCapital > 0 ? redondear2(montoCapital * (1 + tasaInteres / 100)) : 0
+  const valorCuota = montoCapital > 0 ? redondear2(montoTotalDevolver / cantidadCuotas) : 0
   const frecuenciaPlan = planSeleccionado?.frecuencia_pago || 'mensual'
 
   // Manejador del cambio de Cliente: Autodefine el Inversionista vinculado
@@ -147,6 +149,12 @@ export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuario
 
     if (!formData.inversionista_id) {
       setErrorMsg('Debes seleccionar o tener un inversionista asignado.')
+      setLoading(false)
+      return
+    }
+
+    if (!(montoCapital > 0)) {
+      setErrorMsg('La opción de préstamo elegida no tiene un capital válido.')
       setLoading(false)
       return
     }

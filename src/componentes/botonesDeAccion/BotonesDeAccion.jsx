@@ -6,8 +6,9 @@ import {
   UserPlus, 
   HandCoins, 
   ReceiptText, 
-  BadgePercent 
+  BadgePercent
 } from "lucide-react";
+import FiltroProvincia from "../barraSuperior/filtroPorProvincia";
 
 
 export default function BotonesDeAccion({ 

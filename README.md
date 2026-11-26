@@ -12,7 +12,8 @@ Aplicación de gestión de préstamos: inversionistas, clientes, planes de prés
 
 1. Instalar dependencias: `npm install`
 2. Copiar `.env.example` a `.env` y completar los datos de Supabase.
-3. Crear las tablas en Supabase con [db/schema.sql](db/schema.sql) y activar políticas RLS.
+3. En Supabase → SQL Editor, ejecutar [db/schema.sql](db/schema.sql) completo. Crea las tablas, las reglas de seguridad (RLS), el bucket de fotos y las provincias. Se puede volver a ejecutar sin perder datos.
+4. Crear el usuario owner siguiendo el paso 5 del final de `db/schema.sql`.
 
 ## Comandos
 

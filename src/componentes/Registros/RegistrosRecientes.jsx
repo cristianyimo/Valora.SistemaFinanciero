@@ -223,7 +223,7 @@ export default function RegistrosRecientes({
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3">
           <select
             value={filtroTipo}
             onChange={(e) => setFiltroTipo(e.target.value)}
@@ -334,7 +334,7 @@ export default function RegistrosRecientes({
               <div
                 key={reg.id}
                 onClick={() => handleCardClick(reg)}
-                className="p-5 rounded-3xl bg-white border border-line shadow-xs hover:shadow-md hover:border-[#0d6b63]/40 transition-all flex flex-col justify-between cursor-pointer group"
+                className="p-4 sm:p-5 rounded-3xl bg-white border border-line shadow-xs hover:shadow-md hover:border-[#0d6b63]/40 transition-all flex flex-col justify-between cursor-pointer group"
               >
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-3">

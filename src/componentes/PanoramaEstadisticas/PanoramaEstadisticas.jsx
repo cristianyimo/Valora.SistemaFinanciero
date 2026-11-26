@@ -225,10 +225,10 @@ export default function PanoramaOperativo() {
       </div>
 
       {/* GRILLA DE 5 TARJETAS DE MÉTRICAS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
 
         {/* 1. PUNITORIOS COBRADOS */}
-        <div className="p-5 rounded-3xl bg-white border border-line shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
+        <div className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-white border border-line shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-w-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               PUNITORIOS COBRADOS
@@ -238,7 +238,7 @@ export default function PanoramaOperativo() {
             </div>
           </div>
           <div>
-            <p className="text-2xl font-bold text-red-700 tracking-tight">
+            <p className="text-lg sm:text-2xl font-bold text-red-700 tracking-tight break-words">
               ${metricas.punitoriosCobrados.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <span className="text-[10px] font-medium text-slate-400 mt-1 block">
@@ -248,7 +248,7 @@ export default function PanoramaOperativo() {
         </div>
 
         {/* 2. CAPITAL PRESTADO / COLOCADO */}
-        <div className="p-5 rounded-3xl bg-white border border-line shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
+        <div className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-white border border-line shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-w-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               CAPITAL PRESTADO
@@ -258,7 +258,7 @@ export default function PanoramaOperativo() {
             </div>
           </div>
           <div>
-            <p className="text-2xl font-bold text-[#0d6b63] tracking-tight">
+            <p className="text-lg sm:text-2xl font-bold text-[#0d6b63] tracking-tight break-words">
               ${metricas.capitalPrestado.toLocaleString('es-AR')}
             </p>
             <span className="text-[10px] font-medium text-slate-400 mt-1 block">
@@ -268,7 +268,7 @@ export default function PanoramaOperativo() {
         </div>
 
         {/* 3. INTERÉS GENERADO (REAL COBRADO) */}
-        <div className="p-5 rounded-3xl bg-white border border-line shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
+        <div className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-white border border-line shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-w-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               INTERÉS PERCIBIDO
@@ -278,7 +278,7 @@ export default function PanoramaOperativo() {
             </div>
           </div>
           <div>
-            <p className="text-2xl font-bold text-emerald-700 tracking-tight">
+            <p className="text-lg sm:text-2xl font-bold text-emerald-700 tracking-tight break-words">
               +${metricas.interesGenerado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <span className="text-[10px] font-medium text-emerald-600/80 mt-1 block">
@@ -288,7 +288,7 @@ export default function PanoramaOperativo() {
         </div>
 
         {/* 4. TOTAL COBRADO */}
-        <div className="p-5 rounded-3xl bg-white border border-line shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
+        <div className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-white border border-line shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-w-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               TOTAL COBRADO
@@ -298,7 +298,7 @@ export default function PanoramaOperativo() {
             </div>
           </div>
           <div>
-            <p className="text-2xl font-bold text-blue-800 tracking-tight">
+            <p className="text-lg sm:text-2xl font-bold text-blue-800 tracking-tight break-words">
               ${metricas.totalCobrado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <span className="text-[10px] font-medium text-blue-600 mt-1 block">
@@ -308,7 +308,7 @@ export default function PanoramaOperativo() {
         </div>
 
         {/* 5. BALANCE PENDIENTE */}
-        <div className="p-5 rounded-3xl bg-white border border-line shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
+        <div className="col-span-2 lg:col-span-1 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-white border border-line shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-w-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               BALANCE PENDIENTE
@@ -318,7 +318,7 @@ export default function PanoramaOperativo() {
             </div>
           </div>
           <div>
-            <p className="text-2xl font-bold text-amber-700 tracking-tight">
+            <p className="text-lg sm:text-2xl font-bold text-amber-700 tracking-tight break-words">
               ${metricas.balancePendiente.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <span className="text-[10px] font-medium text-amber-600/80 mt-1 block">

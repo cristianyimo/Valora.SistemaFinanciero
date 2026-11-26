@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { X, Search, AlertTriangle, Eye, RefreshCw, CalendarClock, CheckCircle2 } from 'lucide-react'
 import { supabase } from '../../lib/supabaseClient'
+import { avisar } from '../../lib/avisos'
 import {
-  cronogramaConVencimientos, TOLERANCIA_SALDO, punitorioTotal,
-  leerConfigPunitorio, guardarConfigPunitorio
+  cronogramaConVencimientos, TOLERANCIA_SALDO, configPunitorioPrestamo,
+  periodosCobradosPorCuota, punitorioPendiente
 } from '../../lib/finanzas'
+import { usePunitorioGeneral } from '../../lib/usePunitorioGeneral'
 import BotonWhatsApp from '../comunes/BotonWhatsApp'
-import { INTERVALOS_PUNITORIO } from '../comunes/CalculadoraPunitorio'
+import { CampoDias, describirPunitorio } from '../comunes/CalculadoraPunitorio'
 
 const fmt = (n) => Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtFecha = (d) => d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -26,7 +28,13 @@ export default function ModalCobranzas({ isOpen, onClose, onVerFichaPrestamo, ve
   const [error, setError] = useState('')
   const [busqueda, setBusqueda] = useState('')
   const [filtro, setFiltro] = useState('todos')
-  const [punitorio, setPunitorio] = useState(() => ({ aplicar: false, ...leerConfigPunitorio() }))
+
+  // Configuración general de punitorio (compartida, guardada en la base)
+  const { config: general, error: errorGeneral, guardar: guardarGeneral } = usePunitorioGeneral(isOpen)
+  const [editandoGeneral, setEditandoGeneral] = useState(false)
+  const [formGeneral, setFormGeneral] = useState({ tasa: '', cadaDias: '' })
+  const [guardandoGeneral, setGuardandoGeneral] = useState(false)
+  const [errorGuardado, setErrorGuardado] = useState('')
 
   const cargar = async () => {
     setLoading(true)
@@ -43,14 +51,17 @@ export default function ModalCobranzas({ isOpen, onClose, onVerFichaPrestamo, ve
 
       let pagos = []
       if (ids.length > 0) {
-        const { data, error: errPagos } = await supabase.from('pagos').select('prestamo_id, monto_cobrado').in('prestamo_id', ids)
+        // select('*') trae punitorio_detalle: la mora ya cobrada no se vuelve a sumar
+        const { data, error: errPagos } = await supabase.from('pagos').select('*').in('prestamo_id', ids)
         if (errPagos) throw errPagos
         pagos = data || []
       }
 
       const cobradoPorPrestamo = {}
+      const pagosPorPrestamo = {}
       pagos.forEach((p) => {
         cobradoPorPrestamo[p.prestamo_id] = (cobradoPorPrestamo[p.prestamo_id] || 0) + Number(p.monto_cobrado || 0)
+        ;(pagosPorPrestamo[p.prestamo_id] ||= []).push(p)
       })
 
       const resultado = lista
@@ -66,7 +77,8 @@ export default function ModalCobranzas({ isOpen, onClose, onVerFichaPrestamo, ve
             cantidadCuotas: cuotas.length,
             vencidas,
             deudaVencida: vencidas.reduce((acc, c) => acc + c.restante, 0),
-            saldoPendiente
+            saldoPendiente,
+            periodosCobrados: periodosCobradosPorCuota(pagosPorPrestamo[prestamo.id])
           }
         })
         .filter(Boolean)
@@ -106,22 +118,41 @@ export default function ModalCobranzas({ isOpen, onClose, onVerFichaPrestamo, ve
     })
   }, [filas, busqueda, filtro])
 
+  // Punitorio obligatorio de cada préstamo (según su configuración o la general)
+  const punitorioDe = (f) => {
+    const config = configPunitorioPrestamo(f.prestamo, general)
+    return { config, monto: punitorioPendiente(f.vencidas, config, f.periodosCobrados).total }
+  }
+
   const totalVencidas = filas.filter((f) => f.vencidas.length > 0).length
   const montoVencido = filas.reduce((acc, f) => acc + f.deudaVencida, 0)
+  const punitorioTotalCartera = filas.reduce((acc, f) => acc + punitorioDe(f).monto, 0)
 
-  const actualizarPunitorio = (cambio) => {
-    setPunitorio((prev) => {
-      const nuevo = { ...prev, ...cambio }
-      guardarConfigPunitorio({ tasa: Number(nuevo.tasa) || 0, cadaDias: Number(nuevo.cadaDias) || 1 })
-      return nuevo
-    })
+  const abrirEdicionGeneral = () => {
+    setFormGeneral({ tasa: String(general.tasa), cadaDias: String(general.cadaDias) })
+    setErrorGuardado('')
+    setEditandoGeneral(true)
+  }
+
+  const guardarConfigGeneral = async () => {
+    setGuardandoGeneral(true)
+    setErrorGuardado('')
+    try {
+      await guardarGeneral(formGeneral)
+      avisar('Punitorio general actualizado: se aplica a todos los préstamos sin configuración propia')
+      setEditandoGeneral(false)
+    } catch (err) {
+      setErrorGuardado(err.message || 'No se pudo guardar.')
+    } finally {
+      setGuardandoGeneral(false)
+    }
   }
 
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 sm:p-4 backdrop-blur-xs">
-      <div className="w-full max-w-6xl rounded-3xl bg-cream p-4 sm:p-8 shadow-2xl border border-line h-[92vh] flex flex-col overflow-hidden">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 sm:p-4 backdrop-blur-xs">
+      <div className="modal-panel w-full max-w-6xl rounded-3xl bg-cream p-4 sm:p-8 shadow-2xl border border-line modal-panel-full h-[92vh] flex flex-col overflow-hidden">
         {/* Cabecera */}
         <div className="flex items-start justify-between gap-4 pb-4 border-b border-line shrink-0">
           <div>
@@ -132,6 +163,9 @@ export default function ModalCobranzas({ isOpen, onClose, onVerFichaPrestamo, ve
               <span className={totalVencidas > 0 ? 'text-red-700 font-bold' : ''}>
                 {totalVencidas} con cuotas vencidas (${fmt(montoVencido)})
               </span>
+              {punitorioTotalCartera > 0 && (
+                <span className="text-red-700 font-bold"> · Punitorios: ${fmt(punitorioTotalCartera)}</span>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-1">
@@ -152,36 +186,56 @@ export default function ModalCobranzas({ isOpen, onClose, onVerFichaPrestamo, ve
               type="text"
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar por nombre, documento o teléfono..."
+              placeholder="Buscar cliente, DNI o teléfono"
               className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-line bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#0d6b63]/20 focus:border-[#0d6b63]"
             />
           </div>
-          <div className="flex gap-1.5 bg-white/80 p-1 rounded-2xl border border-line">
+          <div className="grid grid-cols-3 lg:flex gap-1.5 bg-white/80 p-1 rounded-2xl border border-line">
             {FILTROS.map((f) => (
               <button key={f.id} onClick={() => setFiltro(f.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${filtro === f.id ? (f.id === 'vencidas' ? 'bg-red-600 text-white' : 'bg-[#0d6b63] text-white') : 'text-slate-600 hover:text-slate-900'}`}>
+                className={`px-2 lg:px-3 py-2 lg:py-1.5 rounded-xl text-xs font-bold leading-tight cursor-pointer ${filtro === f.id ? (f.id === 'vencidas' ? 'bg-red-600 text-white' : 'bg-[#0d6b63] text-white') : 'text-slate-600 hover:text-slate-900'}`}>
                 {f.label}{f.id === 'vencidas' && totalVencidas > 0 ? ` (${totalVencidas})` : ''}
               </button>
             ))}
           </div>
-          <div className="flex flex-wrap items-center gap-2 bg-white/80 px-3 py-1.5 rounded-2xl border border-line text-xs font-bold text-slate-700">
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input type="checkbox" checked={punitorio.aplicar} onChange={(e) => actualizarPunitorio({ aplicar: e.target.checked })} className="w-4 h-4 accent-red-600 cursor-pointer" />
-              Punitorio
-            </label>
-            {punitorio.aplicar && (
+          {/* Punitorio general (obligatorio para todos los préstamos salvo excepción) */}
+          <div className="flex flex-wrap items-center gap-2 bg-white/80 px-3 py-1.5 rounded-2xl border border-red-200 text-xs font-bold text-slate-700">
+            {editandoGeneral ? (
               <>
-                <input type="number" min="0" step="0.01" value={punitorio.tasa} onChange={(e) => actualizarPunitorio({ tasa: e.target.value })}
-                  className="w-16 rounded-lg border border-line px-2 py-1 text-xs" aria-label="Tasa de punitorio" />
+                <span className="text-red-700">Punitorio general:</span>
+                <input type="number" min="0" step="0.01" value={formGeneral.tasa}
+                  onChange={(e) => setFormGeneral((f) => ({ ...f, tasa: e.target.value }))}
+                  className="w-16 rounded-lg border border-line px-2 py-1 text-xs" aria-label="Interés del punitorio general (%)" />
                 <span>% cada</span>
-                <select value={punitorio.cadaDias} onChange={(e) => actualizarPunitorio({ cadaDias: Number(e.target.value) })}
-                  className="rounded-lg border border-line px-1.5 py-1 text-xs cursor-pointer" aria-label="Intervalo de días">
-                  {INTERVALOS_PUNITORIO.map((d) => <option key={d} value={d}>{d === 1 ? '1 día' : `${d} días`}</option>)}
-                </select>
+                <CampoDias valor={formGeneral.cadaDias} onCambiar={(v) => setFormGeneral((f) => ({ ...f, cadaDias: v }))}
+                  className="w-14 rounded-lg border border-line px-2 py-1 text-xs" aria-label="Cada cuántos días" />
+                <span>días</span>
+                <button type="button" onClick={guardarConfigGeneral} disabled={guardandoGeneral}
+                  className="px-2.5 py-1 rounded-lg bg-[#0d6b63] text-white cursor-pointer disabled:opacity-50">
+                  {guardandoGeneral ? '...' : 'Guardar'}
+                </button>
+                <button type="button" onClick={() => setEditandoGeneral(false)}
+                  className="px-2 py-1 rounded-lg text-slate-500 hover:text-slate-800 cursor-pointer">
+                  Cancelar
+                </button>
+              </>
+            ) : (
+              <>
+                <span>
+                  Punitorio general: <span className="text-red-700">{describirPunitorio(general)}</span>
+                </span>
+                <button type="button" onClick={abrirEdicionGeneral}
+                  className="px-2.5 py-1 rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-50 cursor-pointer">
+                  Cambiar
+                </button>
               </>
             )}
           </div>
         </div>
+
+        {(errorGuardado || errorGeneral) && (
+          <p className="text-xs text-amber-800 font-semibold bg-amber-50 p-2.5 rounded-xl border border-amber-200 mb-2">⚠️ {errorGuardado || errorGeneral}</p>
+        )}
 
         {error && <p className="text-xs text-red-600 font-semibold bg-red-50 p-2.5 rounded-xl border border-red-200 mb-2">⚠️ {error}</p>}
 
@@ -194,15 +248,16 @@ export default function ModalCobranzas({ isOpen, onClose, onVerFichaPrestamo, ve
           ) : (
             filtradas.map((f) => {
               const vencida = f.vencidas.length > 0
-              const montoPunitorio = punitorio.aplicar ? punitorioTotal(f.vencidas, punitorio.tasa, punitorio.cadaDias) : 0
+              const { config: configPun, monto: montoPunitorio } = punitorioDe(f)
               const dias = diasHasta(f.cuota.fechaVencimiento)
               const cuotaMostrar = vencida ? f.vencidas[0] : f.cuota
 
               return (
                 <div key={f.prestamo.id}
-                  className={`rounded-2xl border p-4 grid grid-cols-1 md:grid-cols-[1.6fr_1fr_1fr_1.3fr_auto] gap-3 items-center ${vencida ? 'bg-red-50 border-red-300' : 'bg-white border-line'}`}>
+                  className={`rounded-2xl border p-3.5 sm:p-4 grid grid-cols-2 md:grid-cols-[1.6fr_1fr_1fr_1.3fr_auto] gap-x-3 gap-y-2.5 items-center ${vencida ? 'bg-red-50 border-red-300' : 'bg-white border-line'}`}>
+                  {/* En celular: cliente + acciones arriba, importe y vencimiento al medio, estado abajo */}
                   {/* Cliente */}
-                  <div className="min-w-0">
+                  <div className="min-w-0 order-1 md:order-none">
                     <span className="block font-bold text-slate-900 truncate">{f.cliente.nombre_completo || 'Cliente'}</span>
                     <span className="block text-[11px] text-slate-500 font-medium truncate">
                       {[f.cliente.dni ? `${f.cliente.tipo_documento || 'DNI'} ${f.cliente.dni}` : null, f.cliente.telefono, f.cliente.localidad].filter(Boolean).join(' · ') || 'Sin datos de contacto'}
@@ -210,32 +265,35 @@ export default function ModalCobranzas({ isOpen, onClose, onVerFichaPrestamo, ve
                   </div>
 
                   {/* Cuota */}
-                  <div>
+                  <div className="order-3 md:order-none">
                     <span className="block text-[10px] font-bold uppercase text-slate-400">Cuota {cuotaMostrar.numeroCuota} de {f.cantidadCuotas}</span>
-                    <span className="block text-base font-bold text-slate-900">${fmt(cuotaMostrar.restante)}</span>
+                    <span className="block text-lg md:text-base font-bold text-slate-900">${fmt(cuotaMostrar.restante)}</span>
                   </div>
 
                   {/* Vencimiento */}
-                  <div>
+                  <div className="order-4 md:order-none text-right md:text-left">
                     <span className="block text-[10px] font-bold uppercase text-slate-400">Vencimiento</span>
-                    <span className={`block text-sm font-bold ${vencida ? 'text-red-700' : 'text-slate-800'}`}>{fmtFecha(cuotaMostrar.fechaVencimiento)}</span>
+                    <span className={`block text-base md:text-sm font-bold ${vencida ? 'text-red-700' : 'text-slate-800'}`}>{fmtFecha(cuotaMostrar.fechaVencimiento)}</span>
                   </div>
 
                   {/* Estado */}
-                  <div>
+                  <div className="order-5 md:order-none col-span-2 md:col-span-1">
                     {vencida ? (
                       <div className="rounded-xl bg-red-600 text-white px-3 py-2">
                         <span className="flex items-center gap-1.5 text-xs font-bold uppercase">
                           <AlertTriangle className="w-4 h-4 shrink-0" />
                           Vencida · {f.vencidas[0].diasAtraso} {f.vencidas[0].diasAtraso === 1 ? 'día' : 'días'}
                         </span>
-                        {(f.vencidas.length > 1 || montoPunitorio > 0) && (
-                          <span className="block text-[11px] font-semibold text-red-100 mt-0.5">
-                            {f.vencidas.length > 1 ? `${f.vencidas.length} cuotas · $${fmt(f.deudaVencida)}` : ''}
-                            {f.vencidas.length > 1 && montoPunitorio > 0 ? ' · ' : ''}
-                            {montoPunitorio > 0 ? `Punitorio $${fmt(montoPunitorio)}` : ''}
-                          </span>
-                        )}
+                        <span className="block text-[11px] font-semibold text-red-100 mt-0.5">
+                          {[
+                            f.vencidas.length > 1 ? `${f.vencidas.length} cuotas · $${fmt(f.deudaVencida)}` : null,
+                            !configPun.aplica
+                              ? 'Exento de punitorio'
+                              : montoPunitorio > 0
+                                ? `Punitorio $${fmt(montoPunitorio)}${configPun.personalizada ? ' (propio)' : ''}`
+                                : null
+                          ].filter(Boolean).join(' · ')}
+                        </span>
                       </div>
                     ) : dias === 0 ? (
                       <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase px-3 py-1.5 rounded-xl bg-amber-100 text-amber-800 border border-amber-200">
@@ -249,7 +307,7 @@ export default function ModalCobranzas({ isOpen, onClose, onVerFichaPrestamo, ve
                   </div>
 
                   {/* Acciones */}
-                  <div className="flex items-center gap-2 justify-end">
+                  <div className="order-2 md:order-none flex items-center gap-2 justify-end">
                     {vencida && (
                       <BotonWhatsApp
                         datos={{
@@ -266,8 +324,8 @@ export default function ModalCobranzas({ isOpen, onClose, onVerFichaPrestamo, ve
                     )}
                     {onVerFichaPrestamo && (
                       <button onClick={() => onVerFichaPrestamo(f.prestamo)} aria-label="Ver préstamo" title="Ver ficha del préstamo"
-                        className="p-2 rounded-xl bg-[#0d6b63]/10 text-[#0d6b63] hover:bg-[#0d6b63] hover:text-white cursor-pointer">
-                        <Eye className="w-4 h-4" />
+                        className="p-2.5 md:p-2 rounded-xl bg-[#0d6b63]/10 text-[#0d6b63] hover:bg-[#0d6b63] hover:text-white cursor-pointer">
+                        <Eye className="w-5 h-5 md:w-4 md:h-4" />
                       </button>
                     )}
                   </div>

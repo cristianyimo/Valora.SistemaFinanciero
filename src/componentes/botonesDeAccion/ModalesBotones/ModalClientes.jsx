@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { avisar } from '../../../lib/avisos'
 import { subirDocumentos } from '../../../lib/documentos'
 import CamposPersona, { payloadPersona, personaVacia } from '../../comunes/CamposPersona'
 import SelectorFotos from '../../comunes/SelectorFotos'
@@ -60,6 +61,24 @@ export default function ModalCliente({ isOpen, onClose, onSuccess, usuarioLoguea
     try {
       const datos = payloadPersona(formData)
 
+      // Evita cargar dos veces a la misma persona (mismo número de documento)
+      if (datos.dni) {
+        const digitos = datos.dni.replace(/\D/g, '')
+        // Se comparan solo los números: "30.123.456" y "30123456" son el mismo documento
+        const { data: existentes } = await supabase
+          .from('clientes')
+          .select('id, nombre_completo, dni')
+          .not('dni', 'is', null)
+
+        const duplicado = (existentes || []).find((c) => (c.dni || '').replace(/\D/g, '') === digitos)
+        if (duplicado && !window.confirm(
+          `Ya existe un cliente con el documento ${datos.dni}: ${duplicado.nombre_completo}.\n\n¿Querés crearlo igual?`
+        )) {
+          setLoading(false)
+          return
+        }
+      }
+
       const { data: cliente, error } = await supabase
         .from('clientes')
         .insert([{ ...datos, creado_por: usuarioLogueado?.id || null, inversionista_id: null, activo: true }])
@@ -102,6 +121,7 @@ export default function ModalCliente({ isOpen, onClose, onSuccess, usuarioLoguea
         window.alert(`El cliente se guardó, pero hubo un problema con las fotos:\n${avisoFotos}\n\nPodés volver a subirlas desde su ficha.`)
       }
 
+      avisar(`Cliente ${datos.nombre_completo} guardado. Ahora podés cargar su garante.`)
       setClienteCreado(cliente) // → paso 2 (garante)
     } catch (err) {
       console.error('Error al guardar cliente:', err)
@@ -112,8 +132,8 @@ export default function ModalCliente({ isOpen, onClose, onSuccess, usuarioLoguea
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-      <div className="w-full max-w-xl rounded-3xl bg-cream p-6 sm:p-8 shadow-2xl border border-line max-h-[92vh] overflow-y-auto">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+      <div className="modal-panel w-full max-w-xl rounded-3xl bg-cream p-6 sm:p-8 shadow-2xl border border-line max-h-[92vh] overflow-y-auto">
         <div className="flex items-start justify-between mb-5">
           <div>
             <span className="text-[11px] font-bold tracking-widest uppercase text-[#0d6b63]">PASO 1 DE 2 · CLIENTE</span>
@@ -132,7 +152,7 @@ export default function ModalCliente({ isOpen, onClose, onSuccess, usuarioLoguea
             <p className="text-xs text-red-600 font-semibold bg-red-50 p-2.5 rounded-xl border border-red-200">⚠️ {errorMsg}</p>
           )}
 
-          <div className="flex justify-end items-center gap-3 pt-2">
+          <div className="form-acciones flex justify-end items-center gap-3 pt-2">
             <button type="button" onClick={onClose}
               className="px-5 py-2.5 rounded-2xl border border-line bg-white font-bold text-sm text-slate-700 hover:bg-slate-50 cursor-pointer">
               Cancelar

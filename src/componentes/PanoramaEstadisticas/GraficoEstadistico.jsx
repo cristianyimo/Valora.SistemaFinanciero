@@ -241,7 +241,7 @@ export default function GraficoEstadistico() {
       </div>
 
       {/* Tarjetas Superiores */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
         <div className="p-4 sm:p-5 rounded-3xl bg-white border border-line shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Nuevos Clientes</span>
@@ -258,7 +258,7 @@ export default function GraficoEstadistico() {
           <p className="text-2xl font-bold text-[#0d6b63]">{totalesPeriodo.prestamos}</p>
         </div>
 
-        <div className="p-4 sm:p-5 rounded-3xl bg-white border border-line shadow-xs flex flex-col justify-between">
+        <div className="col-span-2 sm:col-span-1 p-4 sm:p-5 rounded-3xl bg-white border border-line shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Rendimiento (Interés)</span>
             <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600"><TrendingUp className="w-4 h-4" /></div>
@@ -270,7 +270,7 @@ export default function GraficoEstadistico() {
       </div>
 
       {/* Gráfico */}
-      <div className="p-4 sm:p-6 rounded-3xl bg-white border border-line shadow-xs h-[450px]">
+      <div className="p-2 sm:p-6 rounded-3xl bg-white border border-line shadow-xs h-[320px] sm:h-[450px]">
         {loading ? (
           <div className="h-full flex items-center justify-center text-sm font-medium text-slate-400">
             Procesando métricas operativas...
@@ -279,7 +279,7 @@ export default function GraficoEstadistico() {
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={datosGrafico}
-              margin={{ top: 20, right: 20, left: 10, bottom: 5 }}
+              margin={{ top: 16, right: 4, left: -12, bottom: 0 }}
             >
               <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#e2e8f0" />
               

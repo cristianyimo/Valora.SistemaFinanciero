@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { X } from 'lucide-react'
+import { X, ChevronLeft } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
 
 import ModalEditarCliente from './ModalEditarCliente'
@@ -27,6 +27,9 @@ export default function ModalDirectorio({
   const [prestamos, setPrestamos] = useState([])
   const [fetchingDetalle, setFetchingDetalle] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
+
+  // En celular se ve una cosa por vez: la lista o la ficha del cliente
+  const [vistaMovil, setVistaMovil] = useState('lista')
 
   // Cliente seleccionado actual, accesible desde el efecto sin re-dispararlo
   const seleccionRef = useRef(null)
@@ -57,11 +60,12 @@ export default function ModalDirectorio({
   useEffect(() => {
     if (!isOpen) return
     seleccionRef.current = null
+    setVistaMovil(itemInicialId ? 'ficha' : 'lista')
     setBusqueda('')
     setItemSeleccionado(null)
     setLista([])
     setPrestamos([])
-  }, [isOpen])
+  }, [isOpen, itemInicialId])
 
   useEffect(() => {
     if (!isOpen) return
@@ -135,10 +139,19 @@ export default function ModalDirectorio({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-      <div className="w-full max-w-5xl rounded-3xl bg-cream p-6 sm:p-8 shadow-2xl border border-line h-[88vh] flex flex-col overflow-hidden">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+      <div className="modal-panel w-full max-w-5xl rounded-3xl bg-cream p-6 sm:p-8 shadow-2xl border border-line modal-panel-full h-[88vh] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between gap-4 pb-4 border-b border-line shrink-0">
-          <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#1d2939]">
+          {/* En celular, con la ficha abierta, el título se convierte en "volver a la lista" */}
+          {vistaMovil === 'ficha' && (
+            <button
+              onClick={() => setVistaMovil('lista')}
+              className="md:hidden flex items-center gap-1.5 -ml-1 px-2 py-2 rounded-xl text-sm font-bold text-[#0d6b63] active:bg-[#0d6b63]/10 cursor-pointer"
+            >
+              <ChevronLeft className="w-5 h-5" /> Clientes
+            </button>
+          )}
+          <h2 className={`text-2xl sm:text-3xl font-serif font-bold text-[#1d2939] ${vistaMovil === 'ficha' ? 'max-md:hidden' : ''}`}>
             {esInversionista ? 'Mis Clientes' : 'Clientes'}
           </h2>
           <button onClick={onClose} aria-label="Cerrar" className="p-2 text-slate-400 hover:text-slate-700 rounded-xl cursor-pointer">
@@ -147,7 +160,7 @@ export default function ModalDirectorio({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 pt-4 flex-1 overflow-hidden">
-          <div className="md:col-span-4 h-full overflow-hidden max-md:max-h-[30vh]">
+          <div className={`md:col-span-4 h-full overflow-hidden ${vistaMovil === 'ficha' ? 'max-md:hidden' : ''}`}>
             <ListaLateralClientes
               lista={lista}
               itemSeleccionado={itemSeleccionado}
@@ -156,11 +169,14 @@ export default function ModalDirectorio({
               placeholderBusqueda="Buscar por nombre o documento..."
               mensajeVacio="No hay clientes registrados."
               mostrarBordeDerecho={true}
-              onSeleccionarItem={(item) => cargarDetallePerfil(item)}
+              onSeleccionarItem={(item) => {
+                cargarDetallePerfil(item)
+                setVistaMovil('ficha')
+              }}
               onCambiarBusqueda={setBusqueda}
             />
           </div>
-          <div className="md:col-span-8 h-full overflow-hidden">
+          <div className={`md:col-span-8 h-full overflow-hidden ${vistaMovil === 'lista' ? 'max-md:hidden' : ''}`}>
             <FichaCliente
               cliente={itemSeleccionado}
               fetchingDetalle={fetchingDetalle}
@@ -174,6 +190,7 @@ export default function ModalDirectorio({
               onSuccess={(idBorrado) => {
                 setLista((prev) => prev.filter((c) => c.id !== idBorrado))
                 setItemSeleccionado(null)
+                setVistaMovil('lista')
               }}
             />
           </div>

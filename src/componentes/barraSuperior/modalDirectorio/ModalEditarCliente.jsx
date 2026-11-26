@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { avisar } from '../../../lib/avisos'
 import CamposPersona, { payloadPersona, personaDesdeRegistro, personaVacia } from '../../comunes/CamposPersona'
 
 const ETIQUETAS = {
@@ -76,6 +77,7 @@ export default function ModalEditarCliente({ isOpen, onClose, onSuccess, cliente
       }])
       if (errAudit) console.warn('Aviso al registrar auditoría:', errAudit.message)
 
+      avisar('Cambios del cliente guardados')
       if (onSuccess) onSuccess(data)
       onClose()
     } catch (err) {
@@ -89,8 +91,8 @@ export default function ModalEditarCliente({ isOpen, onClose, onSuccess, cliente
   if (!isOpen || !cliente) return null
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-      <div className="w-full max-w-xl rounded-3xl bg-cream p-6 sm:p-8 shadow-2xl border border-line max-h-[92vh] overflow-y-auto">
+    <div className="modal-overlay fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+      <div className="modal-panel w-full max-w-xl rounded-3xl bg-cream p-6 sm:p-8 shadow-2xl border border-line max-h-[92vh] overflow-y-auto">
         <div className="flex items-start justify-between mb-5">
           <div>
             <span className="text-[11px] font-bold tracking-widest uppercase text-[#0d6b63]">EDITAR CLIENTE</span>
@@ -108,7 +110,7 @@ export default function ModalEditarCliente({ isOpen, onClose, onSuccess, cliente
             <p className="text-xs text-red-600 font-semibold bg-red-50 p-2.5 rounded-xl border border-red-200">⚠️ {errorMsg}</p>
           )}
 
-          <div className="flex justify-end items-center gap-3 pt-2">
+          <div className="form-acciones flex justify-end items-center gap-3 pt-2">
             <button type="button" onClick={onClose}
               className="px-5 py-2.5 rounded-2xl border border-line bg-white font-bold text-sm text-slate-700 hover:bg-slate-50 cursor-pointer">
               Cancelar

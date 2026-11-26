@@ -34,10 +34,12 @@ export default function BotonWhatsApp({ datos, compacto = false }) {
         title={telefonoValido ? 'Enviar recordatorio por WhatsApp' : 'El cliente no tiene un teléfono válido'}
         className={`flex items-center gap-1.5 rounded-xl font-bold text-xs transition-colors cursor-pointer ${
           telefonoValido ? 'bg-[#25D366] text-white hover:bg-[#1ebe5a]' : 'bg-slate-200 text-slate-500'
-        } ${compacto ? 'p-2' : 'px-3 py-2'}`}
+        } ${compacto ? 'p-2.5 sm:p-2' : 'p-2.5 sm:px-3 sm:py-2'}`}
+        aria-label="Enviar recordatorio por WhatsApp"
       >
-        <IconoWhatsApp />
-        {!compacto && <span>Recordar</span>}
+        <IconoWhatsApp className="w-5 h-5 sm:w-4 sm:h-4" />
+        {/* En celular solo el ícono, para dejarle lugar al nombre del cliente */}
+        {!compacto && <span className="hidden sm:inline">Recordar</span>}
       </button>
       {aviso && (
         <span className="absolute top-full right-0 mt-1 whitespace-nowrap text-[10px] font-bold bg-red-600 text-white px-2 py-1 rounded-lg z-10">

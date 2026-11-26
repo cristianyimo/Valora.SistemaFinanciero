@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { X, Calculator } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { avisar } from '../../../lib/avisos'
 import { hoyLocalISO, redondear2 } from '../../../lib/finanzas'
+import { usePunitorioGeneral } from '../../../lib/usePunitorioGeneral'
+import { CampoDias, describirPunitorio } from '../../comunes/CalculadoraPunitorio'
+
+const PUNITORIO_INICIAL = { modo: 'general', tasa: '', cadaDias: '' } // modo: general | propio | exento
 
 export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuarioLogueado = null }) {
   const [planes, setPlanes] = useState([])
@@ -9,6 +14,10 @@ export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuario
 
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+
+  // Punitorio del préstamo: por defecto la configuración general (obligatoria)
+  const { config: punitorioGeneral } = usePunitorioGeneral(isOpen)
+  const [punitorio, setPunitorio] = useState(PUNITORIO_INICIAL)
 
   const [formData, setFormData] = useState({
     plan_id: '',
@@ -22,6 +31,7 @@ export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuario
     if (!isOpen) return
 
     setErrorMsg('')
+    setPunitorio(PUNITORIO_INICIAL)
     setFormData({
       plan_id: '',
       cliente_id: '',
@@ -147,6 +157,15 @@ export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuario
         estado: 'activo'
       }
 
+      // Punitorio: con "general" se dejan los valores por defecto de la base
+      if (punitorio.modo === 'exento') {
+        payload.punitorio_aplica = false
+      } else if (punitorio.modo === 'propio') {
+        payload.punitorio_aplica = true
+        payload.punitorio_tasa = Math.max(0, Number(punitorio.tasa) || 0)
+        payload.punitorio_cada_dias = Math.max(1, Math.floor(Number(punitorio.cadaDias) || 1))
+      }
+
       const { data: prestamoCreado, error: errorPrestamo } = await supabase
         .from('prestamos')
         .insert([payload])
@@ -182,6 +201,7 @@ export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuario
 
       if (auditError) console.warn('Aviso al registrar auditoría:', auditError.message)
 
+      avisar(`Préstamo de $${montoCapital.toLocaleString('es-AR')} creado para ${nombreCliente}`)
       if (onSuccess) onSuccess()
       onClose()
     } catch (err) {
@@ -195,8 +215,8 @@ export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuario
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs select-none">
-      <div className="w-full max-w-xl rounded-3xl bg-cream p-6 sm:p-8 shadow-2xl border border-line max-h-[92vh] overflow-y-auto">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs select-none">
+      <div className="modal-panel w-full max-w-xl rounded-3xl bg-cream p-6 sm:p-8 shadow-2xl border border-line max-h-[92vh] overflow-y-auto">
         
         {/* Cabecera */}
         <div className="flex items-start justify-between mb-6">
@@ -315,6 +335,51 @@ export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuario
             />
           </div>
 
+          {/* Punitorio por mora */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Punitorio por mora</label>
+            <div className="grid grid-cols-3 gap-1.5 bg-white p-1 rounded-2xl border border-line">
+              {[
+                { id: 'general', label: 'General' },
+                { id: 'propio', label: 'Propio' },
+                { id: 'exento', label: 'Exento' }
+              ].map((op) => (
+                <button
+                  key={op.id}
+                  type="button"
+                  onClick={() => setPunitorio((p) => ({
+                    ...p,
+                    modo: op.id,
+                    ...(op.id === 'propio' && p.tasa === '' ? { tasa: String(punitorioGeneral.tasa), cadaDias: String(punitorioGeneral.cadaDias) } : {})
+                  }))}
+                  className={`py-2 rounded-xl text-xs font-bold cursor-pointer ${punitorio.modo === op.id ? 'bg-[#0d6b63] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {op.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1.5">
+              {punitorio.modo === 'general' && <>Se aplica la configuración general: <strong>{describirPunitorio(punitorioGeneral)}</strong>.</>}
+              {punitorio.modo === 'exento' && 'Este préstamo no generará punitorio por cuotas vencidas.'}
+              {punitorio.modo === 'propio' && 'Punitorio solo para este préstamo:'}
+            </p>
+            {punitorio.modo === 'propio' && (
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Interés (%)</label>
+                  <input type="number" min="0" step="0.01" value={punitorio.tasa}
+                    onChange={(e) => setPunitorio((p) => ({ ...p, tasa: e.target.value }))}
+                    className="w-full rounded-2xl border border-line bg-white px-4 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0d6b63]/20" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Cada (días)</label>
+                  <CampoDias valor={punitorio.cadaDias} onCambiar={(v) => setPunitorio((p) => ({ ...p, cadaDias: v }))}
+                    className="w-full rounded-2xl border border-line bg-white px-4 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0d6b63]/20" />
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Tarjeta Informativa de Totales */}
           <div className="p-4 rounded-2xl bg-[#0d6b63]/10 border border-[#0d6b63]/20 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -348,7 +413,7 @@ export default function ModalNuevoPrestamo({ isOpen, onClose, onSuccess, usuario
           )}
 
           {/* Botones de acción */}
-          <div className="flex justify-end items-center gap-3 pt-3">
+          <div className="form-acciones flex justify-end items-center gap-3 pt-3">
             <button
               type="button"
               onClick={onClose}

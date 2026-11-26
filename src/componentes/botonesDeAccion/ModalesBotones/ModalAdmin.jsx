@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { X, Lock, Mail, ShieldCheck, User } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from '../../../lib/supabaseClient'
+import { avisar } from '../../../lib/avisos'
 
 export default function ModalAdmin({ isOpen, onClose, onSuccess, usuarioLogueado = null }) {
   const [loading, setLoading] = useState(false)
@@ -150,6 +151,7 @@ export default function ModalAdmin({ isOpen, onClose, onSuccess, usuarioLogueado
         password: ''
       })
 
+      avisar(`Administrador ${nombreLimpio} creado`)
       if (onSuccess) onSuccess()
       onClose()
 
@@ -164,8 +166,8 @@ export default function ModalAdmin({ isOpen, onClose, onSuccess, usuarioLogueado
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs select-none">
-      <div className="w-full max-w-lg rounded-3xl bg-cream p-6 sm:p-8 shadow-2xl border border-line">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs select-none">
+      <div className="modal-panel w-full max-w-lg rounded-3xl bg-cream p-6 sm:p-8 shadow-2xl border border-line">
         
         {/* Cabecera del Modal */}
         <div className="flex items-start justify-between mb-6">
@@ -278,7 +280,7 @@ export default function ModalAdmin({ isOpen, onClose, onSuccess, usuarioLogueado
           )}
 
           {/* Botones de Acción */}
-          <div className="flex justify-end items-center gap-3 pt-3">
+          <div className="form-acciones flex justify-end items-center gap-3 pt-3">
             <button
               type="button"
               onClick={onClose}
